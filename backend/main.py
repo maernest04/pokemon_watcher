@@ -1,8 +1,11 @@
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from database import Base, engine
+from routers import auth as auth_router
 
 
 @asynccontextmanager
@@ -15,6 +18,17 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+
+_origins = [os.environ.get("FRONTEND_URL", "http://localhost:5173").rstrip("/")]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(auth_router.router)
 
 
 @app.get("/api/health")
