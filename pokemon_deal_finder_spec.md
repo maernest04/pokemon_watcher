@@ -9,6 +9,16 @@ A web application that monitors eBay listings for Pokémon cards, sends Discord 
 
 ---
 
+## Locked implementation decisions
+
+- **Auth UI:** One screen (or clear tab/link) for **login and sign-up**, like a typical site. Backend: `POST /api/auth/register` and `POST /api/auth/login` with **bcrypt** password hashing only. No email verification, OAuth, or password-reset flow for MVP.
+- **Recent alerts feed (Option B):** The dashboard “last 20 alerts” list shows **only listings where a Discord message was actually sent**. On each successful send, **insert a row into `alerts`**. Do not surface rows that exist only in `seen_listings` if Discord was skipped (e.g. below deal threshold). API: e.g. `GET /api/alerts` (or nested under user/dashboard) returning the last 20 for the authenticated user, reverse chronological by `sent_at`.
+- **eBay usage:** **Read-only search**: find listings with the user’s query and filters, **sort by newest** (`StartTimeNewest`). The app **never** purchases or checks out; it only detects candidate deals (price + market comparison + threshold) and **notifies** via Discord.
+- **TCGPlayer / discovery scraping:** Start with `requests` + BeautifulSoup and **rotated user-agents**. If blocks or failures repeat, **change strategy** (e.g. alternate HTTP stacks such as `httpx`, backoff, different connection patterns, optional headless-browser path) instead of relying on a single brittle client. On failure for a card, log and leave `price_cache` unchanged.
+- **Frontend delivery:** **Vite production build** served as **static assets** (Railway static hosting or minimal static file server). Same Pokémon pixel-art UI goals; no requirement for a heavy server-rendered frontend.
+
+---
+
 ## Tech Stack
 
 | Layer | Choice | Reason |
@@ -38,6 +48,7 @@ pokemon-deal-finder/
 │   ├── routers/
 │   │   ├── auth.py              # /api/auth/* endpoints
 │   │   ├── searches.py          # /api/searches/* endpoints
+│   │   ├── alerts.py            # /api/alerts — last N Discord-sent listings (Option B)
 │   │   ├── users.py             # /api/users/* endpoints
 │   │   └── test.py              # /api/test/* endpoints (ping Discord, eBay, etc.)
 │   ├── services/
@@ -99,6 +110,24 @@ pokemon-deal-finder/
 | ebay_item_id | TEXT | eBay listing ID |
 | first_seen_at | DATETIME | |
 
+### `alerts` (Option B — Discord-sent only)
+
+Rows are created **only when** the app successfully sends a Discord alert for that listing. Powers the dashboard “recent alerts” feed.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | INTEGER PK | |
+| user_id | INTEGER FK → users | Denormalized for fast “my last 20” queries |
+| search_query_id | INTEGER FK → search_queries | |
+| ebay_item_id | TEXT | eBay listing ID |
+| title | TEXT | Listing title |
+| listing_price | FLOAT | |
+| listing_url | TEXT | |
+| image_url | TEXT NULLABLE | Supersize or best available image URL |
+| market_price | FLOAT NULLABLE | Cached market at time of send, if any |
+| pct_below_market | FLOAT NULLABLE | e.g. fraction below market; NULL if market unknown |
+| sent_at | DATETIME | When Discord send succeeded |
+
 ### `price_cache`
 | Column | Type | Notes |
 |---|---|---|
@@ -133,8 +162,10 @@ For each active search_query across all users:
             pct_diff = (market_price - listing_price) / market_price
             If deal_threshold is NULL OR pct_diff >= deal_threshold:
               Send Discord alert
+              On successful send: INSERT into alerts (user_id, search_query_id, ebay_item_id, title, listing_price, listing_url, image_url, market_price, pct_below_market, sent_at)
         - If no market_price cached yet:
             Send alert anyway, note "Market price not yet cached"
+            On successful send: INSERT into alerts (same columns; market_price and pct_below_market NULL as applicable)
 ```
 
 **eBay API notes:**
@@ -160,8 +191,8 @@ For each card_query (with 60-second delay between each):
 ```
 
 **Scraping notes:**
-- Use `requests` + `BeautifulSoup`
-- Rotate user-agent headers to avoid blocks
+- Use `requests` + `BeautifulSoup` as the default path
+- Rotate user-agent headers; on repeated blocks or failures, swap approach (e.g. `httpx`, backoff, different TLS/session behavior, optional headless browser for stubborn pages) rather than one fixed client
 - If scrape fails for a card, log and leave existing cache value intact
 - For the Google step, use `googlesearch-python` library (no API key, scrapes quietly)
 - Timezone: `pytz` — schedule in PST, convert to UTC for APScheduler
@@ -189,7 +220,7 @@ For each card_query (with 60-second delay between each):
 
 ### 4. Auth Flow
 
-- `POST /api/auth/register` — username + password → hash with bcrypt → store in DB
+- `POST /api/auth/register` — username + password → hash with bcrypt → store in DB (called from the sign-up UI)
 - `POST /api/auth/login` — verify hash → return JWT (24hr expiry)
 - All protected routes require `Authorization: Bearer <token>` header
 - JWT secret stored in `.env`
@@ -222,10 +253,10 @@ All return `{ success: bool, message: str, data: ... }` for easy display in the 
 
 ### Pages
 
-#### `/login`
+#### `/login` (and sign-up)
 - Username + password fields
-- "Login" button
-- No registration from UI — admin creates accounts (or expose register endpoint optionally)
+- **Login** and **Sign up** (same page with toggle/tab/link, or adjacent simple flow — keep it minimal)
+- Sign up calls `POST /api/auth/register`; login calls `POST /api/auth/login`
 
 #### `/dashboard` (protected)
 - Grid of **SearchCard** components, one per active search query
@@ -242,7 +273,7 @@ All return `{ success: bool, message: str, data: ... }` for easy display in the 
   - Active/paused toggle
   - Last alert timestamp
   - Edit + Delete buttons
-- Recent alerts feed (last 20 alerts across all queries, reverse chronological)
+- Recent alerts feed: **last 20 rows from `alerts`** for this user (Discord sends only), reverse chronological by `sent_at`
 
 #### `/settings` (protected)
 - Discord Channel ID input (with save button)
@@ -279,7 +310,7 @@ FRONTEND_URL=http://localhost:5173
 ## Deployment (Railway)
 
 - **Backend service:** Python, runs `uvicorn main:app --host 0.0.0.0 --port 8000`
-- **Frontend service:** Node build → static serve via Railway's static site support or a simple Express static server
+- **Frontend service:** `npm run build` (Vite) → **static** output served via Railway static hosting or a minimal static file server (SPA with API base URL from env)
 - SQLite file persists on Railway's volume (add a volume mount to `/app/dealfinder.db`)
 - Set all `.env` values as Railway environment variables
 - `railway.toml` defines both services
@@ -317,8 +348,9 @@ FRONTEND_URL=http://localhost:5173
 
 ## MVP Checklist (for Cursor)
 
-- [ ] SQLite DB + all models created on startup
-- [ ] Auth: register, login, JWT middleware
+- [ ] SQLite DB + all models created on startup (including **`alerts`**)
+- [ ] Auth: register, login, JWT middleware; login + sign-up UI
+- [ ] `alerts` rows inserted only on successful Discord send; dashboard/API returns last 20 per user
 - [ ] eBay polling scheduler (5 min interval)
 - [ ] Seen listings deduplication
 - [ ] Discord bot sends formatted alert embeds
