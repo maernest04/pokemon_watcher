@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from uuid import uuid4
 
 from sqlalchemy import ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -28,7 +29,7 @@ class User(Base):
 class SearchQuery(Base):
     __tablename__ = "search_queries"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[str] = mapped_column(primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     query_string: Mapped[str] = mapped_column()
     is_graded: Mapped[bool] = mapped_column(default=False)
@@ -53,7 +54,7 @@ class SeenListing(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    search_query_id: Mapped[int] = mapped_column(
+    search_query_id: Mapped[str] = mapped_column(
         ForeignKey("search_queries.id"), index=True
     )
     ebay_item_id: Mapped[str] = mapped_column()
@@ -67,7 +68,7 @@ class Alert(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    search_query_id: Mapped[int] = mapped_column(
+    search_query_id: Mapped[str] = mapped_column(
         ForeignKey("search_queries.id"), index=True
     )
     ebay_item_id: Mapped[str] = mapped_column()
