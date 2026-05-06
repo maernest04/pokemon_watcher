@@ -8,6 +8,7 @@ from database import Base, engine
 from routers import alerts as alerts_router
 from routers import auth as auth_router
 from routers import searches as searches_router
+from routers import test as test_router
 from routers import users as users_router
 
 
@@ -35,6 +36,7 @@ app.include_router(auth_router.router)
 app.include_router(users_router.router)
 app.include_router(searches_router.router)
 app.include_router(alerts_router.router)
+app.include_router(test_router.router)
 
 
 @app.get("/api/health")

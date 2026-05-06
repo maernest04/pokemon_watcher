@@ -34,6 +34,7 @@ class SearchQuery(Base):
     query_string: Mapped[str] = mapped_column()
     is_graded: Mapped[bool] = mapped_column(default=False)
     character_name: Mapped[str | None] = mapped_column(nullable=True)
+    listing_type: Mapped[str] = mapped_column(default="buy_it_now")
     min_price: Mapped[float | None] = mapped_column(nullable=True)
     max_price: Mapped[float | None] = mapped_column(nullable=True)
     deal_threshold: Mapped[float | None] = mapped_column(nullable=True)

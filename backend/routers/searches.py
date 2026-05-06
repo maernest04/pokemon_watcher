@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -17,6 +18,7 @@ class SearchQueryCreate(BaseModel):
     query_string: str = Field(min_length=1, max_length=512)
     is_graded: bool = False
     character_name: str | None = Field(default=None, max_length=256)
+    listing_type: Literal["buy_it_now", "auction"] = "buy_it_now"
     min_price: float | None = None
     max_price: float | None = None
     deal_threshold: float | None = None
@@ -37,6 +39,7 @@ class SearchQueryUpdate(BaseModel):
     query_string: str | None = Field(default=None, min_length=1, max_length=512)
     is_graded: bool | None = None
     character_name: str | None = Field(default=None, max_length=256)
+    listing_type: Literal["buy_it_now", "auction"] | None = None
     min_price: float | None = None
     max_price: float | None = None
     deal_threshold: float | None = None
@@ -50,6 +53,7 @@ class SearchQueryResponse(BaseModel):
     query_string: str
     is_graded: bool
     character_name: str | None
+    listing_type: Literal["buy_it_now", "auction"]
     min_price: float | None
     max_price: float | None
     deal_threshold: float | None
@@ -95,6 +99,7 @@ def create_search(
         query_string=body.query_string,
         is_graded=body.is_graded,
         character_name=body.character_name,
+        listing_type=body.listing_type,
         min_price=body.min_price,
         max_price=body.max_price,
         deal_threshold=body.deal_threshold,

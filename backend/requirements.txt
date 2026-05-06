@@ -10,5 +10,5 @@ requests>=2.31,<3
 beautifulsoup4>=4.12,<5
 ebaysdk>=2.2,<3
 discord.py>=2.3,<3
-googlesearch-python>=1.2,<2
 httpx>=0.27,<1
+playwright>=1.54,<2

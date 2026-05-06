@@ -13,8 +13,12 @@ A web application that monitors eBay listings for Pokémon cards, sends Discord 
 
 - **Auth UI:** One screen (or clear tab/link) for **login and sign-up**, like a typical site. Backend: `POST /api/auth/register` and `POST /api/auth/login` with **bcrypt** password hashing only. No email verification, OAuth, or password-reset flow for MVP.
 - **Recent alerts feed (Option B):** The dashboard “last 20 alerts” list shows **only listings where a Discord message was actually sent**. On each successful send, **insert a row into `alerts`**. Do not surface rows that exist only in `seen_listings` if Discord was skipped (e.g. below deal threshold). API: e.g. `GET /api/alerts` (or nested under user/dashboard) returning the last 20 for the authenticated user, reverse chronological by `sent_at`.
-- **eBay usage:** **Read-only search**: find listings with the user’s query and filters, **sort by newest** (`StartTimeNewest`). The app **never** purchases or checks out; it only detects candidate deals (price + market comparison + threshold) and **notifies** via Discord.
+- **eBay usage:** **Read-only search**: find listings with the user’s query and filters, **sort by newest** (`StartTimeNewest`). The app **never** purchases or checks out; it only detects candidate deals and **notifies** via Discord. Listing-mode rule: `buy_it_now` alerts only when within deal threshold; `auction` alerts on every new auction listing.
 - **TCGPlayer / discovery scraping:** Start with `requests` + BeautifulSoup and **rotated user-agents**. If blocks or failures repeat, **change strategy** (e.g. alternate HTTP stacks such as `httpx`, backoff, different connection patterns, optional headless-browser path) instead of relying on a single brittle client. On failure for a card, log and leave `price_cache` unchanged.
+- **Manual market-price override:** Each search can optionally define `manual_market_price`. When set, alert/deal math uses this value instead of scraped/cache market data. Override can be removed to return to scraped pricing.
+- **TCGPlayer discovery input mode (UI + behavior):**
+  - **Mode 1 (freeform):** user enters a raw card query string; backend uses it directly for eBay keyword matching and for PokeDATA discovery via `https://www.pokedata.io/cards?q={user_query}`.
+  - **Mode 2 (structured fields):** user enters Pokémon name + (optional) card type + set number + card number (e.g. `199/165`); backend builds a discovery query and uses it for PokeDATA/TCGPlayer discovery.
 - **Frontend delivery:** **Vite production build** served as **static assets** (Railway static hosting or minimal static file server). Same Pokémon pixel-art UI goals; no requirement for a heavy server-rendered frontend.
 
 ---
@@ -54,7 +58,7 @@ pokemon-deal-finder/
 │   ├── services/
 │   │   ├── ebay.py              # eBay Finding API polling logic
 │   │   ├── discord_bot.py       # Bot init + send_alert() helper
-│   │   ├── tcgplayer.py         # TCGPlayer scraper + price cache
+│   │   ├── pokedata.py          # PokeDATA scraper + price cache
 │   │   └── centering.py         # Card centering scorer (Phase 2)
 │   └── requirements.txt
 ├── frontend/
@@ -96,9 +100,11 @@ pokemon-deal-finder/
 | query_string | TEXT | Raw eBay search string |
 | is_graded | BOOLEAN | Filter: graded cards only |
 | character_name | TEXT NULLABLE | Optional filter |
+| listing_type | TEXT | `buy_it_now` or `auction` |
 | min_price | FLOAT NULLABLE | |
 | max_price | FLOAT NULLABLE | |
 | deal_threshold | FLOAT NULLABLE | e.g. 0.10 = alert if 10% below market. NULL = alert on all new listings |
+| manual_market_price | FLOAT NULLABLE | Optional user override; when present, use this instead of `price_cache.market_price` |
 | is_active | BOOLEAN | Toggle on/off |
 | created_at | DATETIME | |
 
@@ -154,16 +160,22 @@ For each active search_query across all users:
     If ebay_item_id NOT in seen_listings for this search_query:
       Insert into seen_listings
 
-      Fetch cached price from price_cache WHERE card_query = normalized(query_string)
+      Resolve market price source:
+        - If search_query.manual_market_price is set: use that
+        - Else fetch cached price from price_cache WHERE card_query = normalized(query_string)
 
       Build alert:
         - Title, price, URL, image URL
-        - If market_price exists:
+        - Determine listing_type from eBay listing format (Buy It Now or Auction)
+        - If listing_type == auction:
+            Send Discord alert (always)
+            On successful send: INSERT into alerts (...)
+        - If listing_type == buy_it_now and market_price exists:
             pct_diff = (market_price - listing_price) / market_price
             If deal_threshold is NULL OR pct_diff >= deal_threshold:
               Send Discord alert
               On successful send: INSERT into alerts (user_id, search_query_id, ebay_item_id, title, listing_price, listing_url, image_url, market_price, pct_below_market, sent_at)
-        - If no market_price cached yet:
+        - If listing_type == buy_it_now and no market_price cached yet:
             Send alert anyway, note "Market price not yet cached"
             On successful send: INSERT into alerts (same columns; market_price and pct_below_market NULL as applicable)
 ```
@@ -172,6 +184,7 @@ For each active search_query across all users:
 - Use `ebaysdk` Python package
 - Store `EBAY_APP_ID` in `.env`
 - For graded filter: use `itemFilter` `Condition` with value `"3000"` (Graded)
+- Listing filters: map `listing_type` to eBay listing format filter (`FixedPrice` for buy-it-now, `Auction` for auction mode)
 - Wrap all API calls in try/except, log failures, do not crash the scheduler
 
 ---
@@ -183,18 +196,20 @@ Collect all unique card_query values from:
   - All active search_queries (normalized query strings)
 
 For each card_query (with 60-second delay between each):
-  Google search: f"site:tcgplayer.com {card_query}"
-  Take the first result URL
-  Scrape TCGPlayer product page:
+  PokeDATA search URL: f"https://www.pokedata.io/cards?q={card_query}"
+  Take the first card result URL from PokeDATA
+  Scrape card page:
     - Find market price in page HTML (look for "Market Price" label + adjacent $ value)
   Update price_cache SET market_price = X, last_updated = now()
+
+Note: nightly scraping updates `price_cache`, but search-level `manual_market_price` always takes precedence at alert time.
 ```
 
 **Scraping notes:**
 - Use `requests` + `BeautifulSoup` as the default path
 - Rotate user-agent headers; on repeated blocks or failures, swap approach (e.g. `httpx`, backoff, different TLS/session behavior, optional headless browser for stubborn pages) rather than one fixed client
 - If scrape fails for a card, log and leave existing cache value intact
-- For the Google step, use `googlesearch-python` library (no API key, scrapes quietly)
+- Use `requests` + `BeautifulSoup` to parse PokeDATA search results and card pages
 - Timezone: `pytz` — schedule in PST, convert to UTC for APScheduler
 
 ---
@@ -234,7 +249,7 @@ For each card_query (with 60-second delay between each):
 |---|---|
 | `POST /api/test/discord` | Sends a test embed message to the user's configured Discord channel |
 | `POST /api/test/ebay` | Runs one poll cycle for a given search_query_id and returns raw results |
-| `POST /api/test/tcgplayer` | Scrapes TCGPlayer for a given query and returns price result |
+| `POST /api/test/pokedata` | Scrapes PokeDATA for a given query and returns price result |
 
 All return `{ success: bool, message: str, data: ... }` for easy display in the UI.
 
@@ -264,8 +279,10 @@ All return `{ success: bool, message: str, data: ... }` for easy display in the 
   - Search query string (text input)
   - Is graded? (toggle)
   - Character name (optional text)
+  - Listing type (dropdown: "Buy It Now" or "Auction")
   - Min / Max price (number inputs)
   - Deal threshold (dropdown: "All new listings", "5% below market", "10% below market", "15% below market", "Custom %" with input)
+  - Optional manual market price override (number input; blank means use scraped/cache market price)
   - Active toggle
 - Each SearchCard shows:
   - Query string
@@ -358,6 +375,8 @@ FRONTEND_URL=http://localhost:5173
 - [ ] TCGPlayer nightly scrape (12 AM PST, 60s stagger)
 - [ ] Price cache used in alert embeds
 - [ ] Deal threshold filtering
+- [ ] Optional manual market-price override per search with validation and precedence over `price_cache`
+- [ ] Listing-type behavior: buy-it-now alerts require threshold pass; auction alerts always send
 - [ ] CRUD for search queries (per user)
 - [ ] Settings page: Discord channel ID save
 - [ ] Test panel: Discord, eBay, TCGPlayer buttons
