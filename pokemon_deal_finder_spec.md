@@ -365,23 +365,23 @@ FRONTEND_URL=http://localhost:5173
 
 ## MVP Checklist (for Cursor)
 
-- [ ] SQLite DB + all models created on startup (including **`alerts`**)
+- [x] SQLite DB + all models created on startup (including **`alerts`**)
 - [ ] Auth: register, login, JWT middleware; login + sign-up UI
-- [ ] `alerts` rows inserted only on successful Discord send; dashboard/API returns last 20 per user
-- [ ] eBay polling scheduler (5 min interval)
-- [ ] Seen listings deduplication
-- [ ] Discord bot sends formatted alert embeds
-- [ ] Per-user channel routing
-- [ ] TCGPlayer nightly scrape (12 AM PST, 60s stagger)
-- [ ] Price cache used in alert embeds
-- [ ] Deal threshold filtering
-- [ ] Optional manual market-price override per search with validation and precedence over `price_cache`
-- [ ] Listing-type behavior: buy-it-now alerts require threshold pass; auction alerts always send
-- [ ] CRUD for search queries (per user)
+- [x] `alerts` rows inserted only on successful Discord send; dashboard/API returns last 20 per user
+- [x] eBay polling scheduler (5 min interval)
+- [x] Seen listings deduplication
+- [x] Discord bot sends formatted alert embeds
+- [x] Per-user channel routing
+- [x] TCGPlayer nightly scrape (12 AM PST, 60s stagger)
+- [x] Price cache used in alert embeds
+- [x] Deal threshold filtering
+- [x] Optional manual market-price override per search with validation and precedence over `price_cache`
+- [x] Listing-type behavior: buy-it-now alerts require threshold pass; auction alerts always send
+- [x] CRUD for search queries (per user)
 - [ ] Settings page: Discord channel ID save
 - [ ] Test panel: Discord, eBay, TCGPlayer buttons
 - [ ] React frontend with Pokémon pixel art theme
 - [ ] Railway deployment config
-- [ ] `.env.example` with all required keys
+- [x] `.env.example` with all required keys
 - [ ] `README.md` with setup instructions for friends
-- [ ] Phase 2 centering service stubbed but not implemented
+- [x] Phase 2 centering service stubbed but not implemented
