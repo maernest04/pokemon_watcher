@@ -10,6 +10,7 @@ from routers import auth as auth_router
 from routers import searches as searches_router
 from routers import test as test_router
 from routers import users as users_router
+from scheduler import create_scheduler
 
 
 @asynccontextmanager
@@ -18,7 +19,10 @@ async def lifespan(app: FastAPI):
 
     _ = models
     Base.metadata.create_all(bind=engine)
+    scheduler = create_scheduler()
+    scheduler.start()
     yield
+    scheduler.shutdown()
 
 
 app = FastAPI(lifespan=lifespan)
