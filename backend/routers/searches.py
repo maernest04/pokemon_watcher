@@ -19,6 +19,7 @@ class SearchQueryCreate(BaseModel):
     is_graded: bool = False
     character_name: str | None = Field(default=None, max_length=256)
     listing_type: Literal["buy_it_now", "auction"] = "buy_it_now"
+    manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
     deal_threshold: float | None = None
@@ -40,6 +41,7 @@ class SearchQueryUpdate(BaseModel):
     is_graded: bool | None = None
     character_name: str | None = Field(default=None, max_length=256)
     listing_type: Literal["buy_it_now", "auction"] | None = None
+    manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
     deal_threshold: float | None = None
@@ -54,6 +56,7 @@ class SearchQueryResponse(BaseModel):
     is_graded: bool
     character_name: str | None
     listing_type: Literal["buy_it_now", "auction"]
+    manual_market_price: float | None
     min_price: float | None
     max_price: float | None
     deal_threshold: float | None
@@ -100,6 +103,7 @@ def create_search(
         is_graded=body.is_graded,
         character_name=body.character_name,
         listing_type=body.listing_type,
+        manual_market_price=body.manual_market_price,
         min_price=body.min_price,
         max_price=body.max_price,
         deal_threshold=body.deal_threshold,
