@@ -68,6 +68,7 @@ class SearchQueryResponse(BaseModel):
     deal_threshold: float | None
     is_active: bool
     created_at: datetime
+    market_price: float | None = None
 
 
 def _get_owned_search(
@@ -94,6 +95,11 @@ def list_searches(
         .where(SearchQuery.user_id == user.id)
         .order_by(SearchQuery.created_at.desc())
     ).all()
+    
+    from scheduler import get_cached_market_price
+    for row in rows:
+        row.market_price = get_cached_market_price(db, row.query_string)
+        
     return rows
 
 
@@ -121,6 +127,8 @@ def create_search(
     db.add(sq)
     db.commit()
     db.refresh(sq)
+    from scheduler import get_cached_market_price
+    sq.market_price = get_cached_market_price(db, sq.query_string)
 
     if sq.manual_market_price is None:
         from services.pokedata import update_market_price_cache
@@ -161,6 +169,8 @@ def update_search(
     db.add(sq)
     db.commit()
     db.refresh(sq)
+    from scheduler import get_cached_market_price
+    sq.market_price = get_cached_market_price(db, sq.query_string)
     return sq
 
 
@@ -174,6 +184,8 @@ def refresh_market_price(
     from services.pokedata import update_market_price_cache
     update_market_price_cache(sq.query_string, db)
     db.refresh(sq)
+    from scheduler import get_cached_market_price
+    sq.market_price = get_cached_market_price(db, sq.query_string)
     return sq
 
 

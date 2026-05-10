@@ -17,16 +17,18 @@ def _normalize_query(query: str) -> str:
     return " ".join(query.strip().lower().split())
 
 
-def _resolve_market_price(search_query: SearchQuery, db) -> float | None:
-    if search_query.manual_market_price is not None:
-        return search_query.manual_market_price
-    normalized_query = _normalize_query(search_query.query_string)
+def get_cached_market_price(db, query_string: str) -> float | None:
+    normalized_query = _normalize_query(query_string)
     cache = db.scalar(
         select(PriceCache).where(PriceCache.card_query == normalized_query)
     )
-    if cache is None:
-        return None
-    return cache.market_price
+    return cache.market_price if cache else None
+
+
+def _resolve_market_price(search_query: SearchQuery, db) -> float | None:
+    if search_query.manual_market_price is not None:
+        return search_query.manual_market_price
+    return get_cached_market_price(db, search_query.query_string)
 
 
 def _should_send_alert(
