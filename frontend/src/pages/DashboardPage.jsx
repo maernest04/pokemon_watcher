@@ -1,0 +1,918 @@
+import { useEffect, useMemo, useState } from "react"
+import {
+  createSearch,
+  deleteSearch,
+  listAlerts,
+  listSearches,
+  testDiscord,
+  testEbay,
+  testPokedata,
+  updateMe,
+  updateSearch,
+} from "../api"
+
+const SEARCHES_PER_PAGE = 5
+
+const emptyForm = {
+  pokemon_name: "",
+  set_name: "",
+  card_number: "",
+  listing_type: "buy_it_now",
+  manual_market_price: "",
+  min_price: "",
+  max_price: "",
+  deal_threshold: "",
+  is_graded: false,
+  is_active: true,
+}
+
+function splitQueryString(search) {
+  const raw = (search.query_string || "").trim()
+  const tokens = raw ? raw.split(/\s+/) : []
+  const pokemonName = search.character_name || tokens[0] || ""
+  let remaining = tokens
+  if (pokemonName && tokens.length > 0 && tokens[0].toLowerCase() === pokemonName.toLowerCase()) {
+    remaining = tokens.slice(1)
+  }
+  let cardNumber = ""
+  if (remaining.length > 0 && remaining[remaining.length - 1].includes("/")) {
+    cardNumber = remaining[remaining.length - 1]
+    remaining = remaining.slice(0, -1)
+  }
+  const setName = remaining.join(" ")
+  return {
+    pokemon_name: pokemonName,
+    set_name: setName,
+    card_number: cardNumber,
+  }
+}
+
+function formFromSearch(search) {
+  const queryParts = splitQueryString(search)
+  return {
+    pokemon_name: queryParts.pokemon_name,
+    set_name: queryParts.set_name,
+    card_number: queryParts.card_number,
+    listing_type: search.listing_type ?? "buy_it_now",
+    manual_market_price:
+      search.manual_market_price === null ? "" : String(search.manual_market_price),
+    min_price: search.min_price === null ? "" : String(search.min_price),
+    max_price: search.max_price === null ? "" : String(search.max_price),
+    deal_threshold:
+      search.deal_threshold === null ? "" : String(search.deal_threshold * 100),
+    is_graded: Boolean(search.is_graded),
+    is_active: Boolean(search.is_active),
+  }
+}
+
+function normalizePayload(form) {
+  const pokemonName = form.pokemon_name.trim()
+  const setName = form.set_name.trim()
+  const cardNumber = form.card_number.trim()
+  return {
+    query_string: [pokemonName, setName, cardNumber].filter(Boolean).join(" ").toLowerCase(),
+    character_name: pokemonName || null,
+    listing_type: form.listing_type,
+    manual_market_price:
+      form.manual_market_price === "" ? null : Number(form.manual_market_price),
+    min_price: form.min_price === "" ? null : Number(form.min_price),
+    max_price: form.max_price === "" ? null : Number(form.max_price),
+    deal_threshold:
+      form.deal_threshold === "" ? null : Number(form.deal_threshold) / 100,
+    is_graded: form.is_graded,
+    is_active: form.is_active,
+  }
+}
+
+function formatMoney(value) {
+  if (value === null || value === undefined) {
+    return "—"
+  }
+  return `$${Number(value).toFixed(2)}`
+}
+
+function formatAlertPercent(value) {
+  if (value === null || value === undefined) {
+    return "—"
+  }
+  return `${(Number(value) * 100).toFixed(1)}%`
+}
+
+function formatListingType(value) {
+  if (value === "auction") {
+    return "Auction"
+  }
+  if (value === "both") {
+    return "Both"
+  }
+  return "Buy It Now"
+}
+
+function ResultBadge({ success }) {
+  return (
+    <span className={success ? "result-badge success" : "result-badge failure"}>
+      {success ? "Success" : "Failed"}
+    </span>
+  )
+}
+
+function DiscordTestResult({ result }) {
+  if (!result) {
+    return null
+  }
+  return (
+    <div className="test-result-card">
+      <div className="test-result-header">
+        <ResultBadge success={Boolean(result.success)} />
+      </div>
+      <p className="support-copy">{result.message}</p>
+      <dl className="search-meta">
+        <div>
+          <dt>Message sent</dt>
+          <dd>{result.success ? "Yes" : "No"}</dd>
+        </div>
+      </dl>
+    </div>
+  )
+}
+
+function EbayTestResult({ result }) {
+  if (!result) {
+    return null
+  }
+  const listings = Array.isArray(result.data) ? result.data : []
+  const firstListing = listings[0] || null
+  return (
+    <div className="test-result-card">
+      <div className="test-result-header">
+        <ResultBadge success={Boolean(result.success)} />
+      </div>
+      <p className="support-copy">{result.message}</p>
+      <dl className="search-meta">
+        <div>
+          <dt>Listings returned</dt>
+          <dd>{listings.length}</dd>
+        </div>
+        {firstListing ? (
+          <>
+            <div>
+              <dt>First result price</dt>
+              <dd>{formatMoney(firstListing.price)}</dd>
+            </div>
+            <div>
+              <dt>First result type</dt>
+              <dd>{formatListingType(firstListing.listing_type)}</dd>
+            </div>
+            <div>
+              <dt>First result title</dt>
+              <dd>{firstListing.title || "—"}</dd>
+            </div>
+          </>
+        ) : null}
+      </dl>
+    </div>
+  )
+}
+
+function PokedataTestResult({ result }) {
+  if (!result) {
+    return null
+  }
+  const data = result.data || {}
+  return (
+    <div className="test-result-card">
+      <div className="test-result-header">
+        <ResultBadge success={Boolean(result.success)} />
+      </div>
+      <p className="support-copy">{result.message}</p>
+      <dl className="search-meta">
+        <div>
+          <dt>Market price</dt>
+          <dd>{formatMoney(data.market_price)}</dd>
+        </div>
+        <div>
+          <dt>Product URL</dt>
+          <dd>{data.product_url || "—"}</dd>
+        </div>
+      </dl>
+    </div>
+  )
+}
+
+function SearchForm({
+  title,
+  form,
+  onChange,
+  onSubmit,
+  onCancel,
+  submitLabel,
+  busy,
+  compact = false,
+}) {
+  return (
+    <form className="search-form" onSubmit={onSubmit}>
+      {compact ? (
+        <div className="inline-form-header">
+          <h4>{title}</h4>
+        </div>
+      ) : (
+        <div className="panel-header">
+          <h2>{title}</h2>
+        </div>
+      )}
+
+      <div className="search-grid">
+        <label className="field">
+          <span>Pokemon name</span>
+          <input
+            name="pokemon_name"
+            value={form.pokemon_name}
+            onChange={onChange}
+            placeholder="Charizard"
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Set</span>
+          <input
+            name="set_name"
+            value={form.set_name}
+            onChange={onChange}
+            placeholder="151"
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Card number</span>
+          <input
+            name="card_number"
+            value={form.card_number}
+            onChange={onChange}
+            placeholder="199/165"
+            required
+          />
+        </label>
+
+        <label className="field">
+          <span>Listing type</span>
+          <select
+            name="listing_type"
+            value={form.listing_type}
+            onChange={onChange}
+          >
+            <option value="buy_it_now">Buy It Now</option>
+            <option value="auction">Auction</option>
+            <option value="both">Both</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Manual market price</span>
+          <input
+            name="manual_market_price"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.manual_market_price}
+            onChange={onChange}
+            placeholder="200"
+          />
+        </label>
+
+        <label className="field">
+          <span>Deal threshold</span>
+          <input
+            name="deal_threshold"
+            type="number"
+            step="1"
+            min="0"
+            value={form.deal_threshold}
+            onChange={onChange}
+            placeholder="15"
+          />
+        </label>
+
+        <label className="field">
+          <span>Min price</span>
+          <input
+            name="min_price"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.min_price}
+            onChange={onChange}
+            placeholder="100"
+          />
+        </label>
+
+        <label className="field">
+          <span>Max price</span>
+          <input
+            name="max_price"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.max_price}
+            onChange={onChange}
+            placeholder="220"
+          />
+        </label>
+      </div>
+
+      <div className="query-preview">
+        <span>Built query</span>
+        <strong>
+          {[form.pokemon_name.trim(), form.set_name.trim(), form.card_number.trim()]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase() || "—"}
+        </strong>
+      </div>
+
+      <div className="toggle-row">
+        <label className="toggle-field">
+          <input
+            name="is_graded"
+            type="checkbox"
+            checked={form.is_graded}
+            onChange={onChange}
+          />
+          <span>Ungraded only</span>
+        </label>
+
+        <label className="toggle-field">
+          <input
+            name="is_active"
+            type="checkbox"
+            checked={form.is_active}
+            onChange={onChange}
+          />
+          <span>Active</span>
+        </label>
+      </div>
+
+      <div className="form-actions">
+        {onCancel ? (
+          <button
+            type="button"
+            className="secondary-button"
+            onClick={onCancel}
+            disabled={busy}
+          >
+            Cancel
+          </button>
+        ) : null}
+        <button type="submit" disabled={busy}>
+          {busy ? "Saving..." : submitLabel}
+        </button>
+      </div>
+    </form>
+  )
+}
+
+export default function DashboardPage({ user, onUserChange, onLogout }) {
+  const [searches, setSearches] = useState([])
+  const [alerts, setAlerts] = useState([])
+  const [createForm, setCreateForm] = useState(emptyForm)
+  const [editingId, setEditingId] = useState(null)
+  const [editForm, setEditForm] = useState(emptyForm)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [discordChannelId, setDiscordChannelId] = useState(user.discord_channel_id || "")
+  const [pokedataQuery, setPokedataQuery] = useState("charizard 151 199/165")
+  const [selectedTestSearchId, setSelectedTestSearchId] = useState("")
+  const [testResults, setTestResults] = useState({
+    discord: null,
+    ebay: null,
+    pokedata: null,
+  })
+  const [loading, setLoading] = useState(true)
+  const [alertsLoading, setAlertsLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [settingsSaving, setSettingsSaving] = useState(false)
+  const [testingAction, setTestingAction] = useState("")
+  const [message, setMessage] = useState("")
+  const [error, setError] = useState("")
+  const [settingsMessage, setSettingsMessage] = useState("")
+  const [settingsError, setSettingsError] = useState("")
+
+  const editingSearch = useMemo(
+    () => searches.find((search) => search.id === editingId) || null,
+    [editingId, searches],
+  )
+  const totalPages = Math.max(1, Math.ceil(searches.length / SEARCHES_PER_PAGE))
+  const paginatedSearches = useMemo(() => {
+    const startIndex = (currentPage - 1) * SEARCHES_PER_PAGE
+    return searches.slice(startIndex, startIndex + SEARCHES_PER_PAGE)
+  }, [currentPage, searches])
+
+  useEffect(() => {
+    loadSearches()
+    loadAlerts()
+  }, [])
+
+  useEffect(() => {
+    setDiscordChannelId(user.discord_channel_id || "")
+  }, [user.discord_channel_id])
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages)
+    }
+  }, [currentPage, totalPages])
+
+  async function loadSearches() {
+    setLoading(true)
+    setError("")
+    try {
+      const data = await listSearches()
+      setSearches(data)
+      setCurrentPage(1)
+      setSelectedTestSearchId((current) => {
+        if (current && data.some((search) => search.id === current)) {
+          return current
+        }
+        return data[0]?.id || ""
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load searches")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function loadAlerts() {
+    setAlertsLoading(true)
+    try {
+      const data = await listAlerts()
+      setAlerts(data)
+    } catch {
+      setAlerts([])
+    } finally {
+      setAlertsLoading(false)
+    }
+  }
+
+  function handleFormChange(setter) {
+    return (event) => {
+      const { name, type, checked, value } = event.target
+      setter((current) => ({
+        ...current,
+        [name]: type === "checkbox" ? checked : value,
+      }))
+    }
+  }
+
+  async function handleCreate(event) {
+    event.preventDefault()
+    setSaving(true)
+    setError("")
+    setMessage("")
+    try {
+      const created = await createSearch(normalizePayload(createForm))
+      setSearches((current) => [created, ...current])
+      setCurrentPage(1)
+      setSelectedTestSearchId((current) => current || created.id)
+      setCreateForm(emptyForm)
+      setMessage("Search created.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not create search")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function startEditing(search) {
+    setEditingId(search.id)
+    setEditForm(formFromSearch(search))
+    setError("")
+    setMessage("")
+  }
+
+  function cancelEditing() {
+    setEditingId(null)
+    setEditForm(emptyForm)
+  }
+
+  async function handleUpdate(event) {
+    event.preventDefault()
+    if (!editingId) {
+      return
+    }
+    setSaving(true)
+    setError("")
+    setMessage("")
+    try {
+      const updated = await updateSearch(editingId, normalizePayload(editForm))
+      setSearches((current) =>
+        current.map((search) => (search.id === editingId ? updated : search)),
+      )
+      setEditingId(null)
+      setEditForm(emptyForm)
+      setMessage("Search updated.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update search")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete(searchId) {
+    const confirmed = window.confirm("Delete this search?")
+    if (!confirmed) {
+      return
+    }
+    setSaving(true)
+    setError("")
+    setMessage("")
+    try {
+      await deleteSearch(searchId)
+      setSearches((current) => current.filter((search) => search.id !== searchId))
+      if (editingId === searchId) {
+        cancelEditing()
+      }
+      setMessage("Search deleted.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete search")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleSaveSettings(event) {
+    event.preventDefault()
+    setSettingsSaving(true)
+    setSettingsMessage("")
+    setSettingsError("")
+    try {
+      const updatedUser = await updateMe({
+        discord_channel_id: discordChannelId.trim() || null,
+      })
+      onUserChange(updatedUser)
+      setSettingsMessage("Settings saved.")
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : "Could not save settings")
+    } finally {
+      setSettingsSaving(false)
+    }
+  }
+
+  async function runDiscordTest() {
+    setTestingAction("discord")
+    try {
+      const result = await testDiscord()
+      setTestResults((current) => ({ ...current, discord: result }))
+    } catch (err) {
+      setTestResults((current) => ({
+        ...current,
+        discord: {
+          success: false,
+          message: err instanceof Error ? err.message : "Discord test failed.",
+          data: null,
+        },
+      }))
+    } finally {
+      setTestingAction("")
+    }
+  }
+
+  async function runEbayTest() {
+    if (!selectedTestSearchId) {
+      setTestResults((current) => ({
+        ...current,
+        ebay: { success: false, message: "Pick a search first.", data: [] },
+      }))
+      return
+    }
+    setTestingAction("ebay")
+    try {
+      const result = await testEbay({ search_query_id: selectedTestSearchId })
+      setTestResults((current) => ({ ...current, ebay: result }))
+    } catch (err) {
+      setTestResults((current) => ({
+        ...current,
+        ebay: {
+          success: false,
+          message: err instanceof Error ? err.message : "eBay test failed.",
+          data: [],
+        },
+      }))
+    } finally {
+      setTestingAction("")
+    }
+  }
+
+  async function runPokedataTest() {
+    setTestingAction("pokedata")
+    try {
+      const result = await testPokedata({
+        query: pokedataQuery,
+        debug_browser: false,
+      })
+      setTestResults((current) => ({ ...current, pokedata: result }))
+    } catch (err) {
+      setTestResults((current) => ({
+        ...current,
+        pokedata: {
+          success: false,
+          message: err instanceof Error ? err.message : "PokeDATA test failed.",
+          data: null,
+        },
+      }))
+    } finally {
+      setTestingAction("")
+    }
+  }
+
+  function renderSearchSummary(search) {
+    const parts = [
+      search.query_string,
+      formatListingType(search.listing_type),
+      search.is_active ? "Active" : "Paused",
+    ]
+    if (search.is_graded) {
+      parts.push("Ungraded only")
+    }
+    if (search.manual_market_price !== null) {
+      parts.push(`Market ${formatMoney(search.manual_market_price)}`)
+    }
+    if (search.deal_threshold !== null) {
+      parts.push(`Deal ${formatAlertPercent(search.deal_threshold)}`)
+    }
+    if (search.min_price !== null || search.max_price !== null) {
+      const minLabel = search.min_price === null ? "0" : formatMoney(search.min_price)
+      const maxLabel = search.max_price === null ? "∞" : formatMoney(search.max_price)
+      parts.push(`Range ${minLabel}-${maxLabel}`)
+    }
+    return parts.join(" · ")
+  }
+
+  return (
+    <main className="dashboard-layout">
+      <header className="dashboard-header">
+        <div>
+          <p className="eyebrow">Signed in</p>
+          <h1>{user.username}</h1>
+        </div>
+        <button type="button" className="secondary-button" onClick={onLogout}>
+          Log out
+        </button>
+      </header>
+
+      <section className="dashboard-panel">
+        <div className="panel-header">
+          <h2>Searches</h2>
+          <button type="button" className="secondary-button" onClick={loadSearches}>
+            Refresh
+          </button>
+        </div>
+        <p className="support-copy">
+          Manage the eBay searches that feed your alerts.
+        </p>
+        {message ? <p className="form-success">{message}</p> : null}
+        {error ? <p className="form-error">{error}</p> : null}
+        {loading ? (
+          <p className="support-copy">Loading searches...</p>
+        ) : searches.length === 0 ? (
+          <p className="support-copy">No searches yet.</p>
+        ) : (
+          <>
+            <div className="search-list compact">
+              {paginatedSearches.map((search) => (
+                <article key={search.id} className="search-row-card">
+                  <div className="search-row">
+                    <div className="search-row-main">
+                      <h3>{search.character_name || search.query_string}</h3>
+                      <p className="support-copy search-row-summary">
+                        {renderSearchSummary(search)}
+                      </p>
+                    </div>
+                    <div className="card-actions">
+                      <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => startEditing(search)}
+                        disabled={saving}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        className="danger-button"
+                        onClick={() => handleDelete(search.id)}
+                        disabled={saving}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </div>
+                  {editingId === search.id ? (
+                    <div className="inline-edit-panel">
+                      <SearchForm
+                        title={`Edit ${search.character_name || search.query_string}`}
+                        form={editForm}
+                        onChange={handleFormChange(setEditForm)}
+                        onSubmit={handleUpdate}
+                        onCancel={cancelEditing}
+                        submitLabel="Save changes"
+                        busy={saving}
+                        compact
+                      />
+                    </div>
+                  ) : null}
+                </article>
+              ))}
+            </div>
+            <div className="pagination-row">
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                disabled={currentPage === 1}
+              >
+                Previous
+              </button>
+              <p className="support-copy pagination-label">
+                Page {currentPage} of {totalPages}
+              </p>
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                disabled={currentPage === totalPages}
+              >
+                Next
+              </button>
+            </div>
+          </>
+        )}
+      </section>
+
+      <section className="dashboard-single">
+        <section className="dashboard-panel">
+          <SearchForm
+            title="Create search"
+            form={createForm}
+            onChange={handleFormChange(setCreateForm)}
+            onSubmit={handleCreate}
+            submitLabel="Create search"
+            busy={saving}
+          />
+        </section>
+      </section>
+
+      <section className="dashboard-grid single-column">
+        <section className="dashboard-panel">
+          <div className="panel-header">
+            <h2>Settings & Tests</h2>
+          </div>
+          
+          <div className="settings-test-layout">
+            <div className="settings-group">
+              <p className="support-copy">Configure your Discord alert destination.</p>
+              <form className="search-form" onSubmit={handleSaveSettings}>
+                <label className="field">
+                  <span>Discord channel ID</span>
+                  <input
+                    value={discordChannelId}
+                    onChange={(event) => setDiscordChannelId(event.target.value)}
+                    placeholder="123456789012345678"
+                  />
+                </label>
+                {settingsMessage ? <p className="form-success">{settingsMessage}</p> : null}
+                {settingsError ? <p className="form-error">{settingsError}</p> : null}
+                <div className="form-actions">
+                  <button type="submit" disabled={settingsSaving}>
+                    {settingsSaving ? "Saving..." : "Save settings"}
+                  </button>
+                </div>
+              </form>
+            </div>
+
+            <div className="test-divider" />
+
+            <div className="test-stack">
+              <p className="support-copy">Verify your integrations manually.</p>
+              <div className="test-row">
+                <button
+                  type="button"
+                  onClick={runDiscordTest}
+                  disabled={testingAction === "discord"}
+                >
+                  {testingAction === "discord" ? "Testing..." : "Test Discord"}
+                </button>
+                <p className="support-copy">
+                  {testResults.discord?.message || "Send a Discord test message."}
+                </p>
+                <DiscordTestResult result={testResults.discord} />
+              </div>
+
+              <div className="test-row">
+                <label className="field">
+                  <span>Search for eBay test</span>
+                  <select
+                    value={selectedTestSearchId}
+                    onChange={(event) => setSelectedTestSearchId(event.target.value)}
+                  >
+                    <option value="">Select a search</option>
+                    {searches.map((search) => (
+                      <option key={search.id} value={search.id}>
+                        {search.query_string}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={runEbayTest}
+                  disabled={testingAction === "ebay"}
+                >
+                  {testingAction === "ebay" ? "Testing..." : "Test eBay (Top 5)"}
+                </button>
+                <p className="support-copy">
+                  {testResults.ebay?.message || "Fetch top 5 listings for one saved search."}
+                </p>
+                <EbayTestResult result={testResults.ebay} />
+              </div>
+
+              <div className="test-row">
+                <label className="field">
+                  <span>PokeDATA query</span>
+                  <input
+                    value={pokedataQuery}
+                    onChange={(event) => setPokedataQuery(event.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={runPokedataTest}
+                  disabled={testingAction === "pokedata"}
+                >
+                  {testingAction === "pokedata" ? "Testing..." : "Test PokeDATA"}
+                </button>
+                <p className="support-copy">
+                  {testResults.pokedata?.message || "Check current market-price scraping."}
+                </p>
+                <PokedataTestResult result={testResults.pokedata} />
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <section className="dashboard-panel">
+        <div className="panel-header">
+          <h2>Recent alerts</h2>
+          <button type="button" className="secondary-button" onClick={loadAlerts}>
+            Refresh
+          </button>
+        </div>
+        {alertsLoading ? (
+          <p className="support-copy">Loading alerts...</p>
+        ) : alerts.length === 0 ? (
+          <p className="support-copy">No alerts sent yet.</p>
+        ) : (
+          <div className="alerts-list">
+            {alerts.map((alert) => (
+              <article key={alert.id} className="alert-card">
+                <div className="search-card-header">
+                  <div>
+                    <h3>{alert.title}</h3>
+                    <p className="support-copy">{new Date(alert.sent_at).toLocaleString()}</p>
+                  </div>
+                  <a
+                    className="link-button"
+                    href={alert.listing_url}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    View listing
+                  </a>
+                </div>
+                <dl className="search-meta">
+                  <div>
+                    <dt>Listing price</dt>
+                    <dd>{formatMoney(alert.listing_price)}</dd>
+                  </div>
+                  <div>
+                    <dt>Market price</dt>
+                    <dd>{formatMoney(alert.market_price)}</dd>
+                  </div>
+                  <div>
+                    <dt>Below market</dt>
+                    <dd>{formatAlertPercent(alert.pct_below_market)}</dd>
+                  </div>
+                  <div>
+                    <dt>Item ID</dt>
+                    <dd>{alert.ebay_item_id}</dd>
+                  </div>
+                </dl>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+    </main>
+  )
+}

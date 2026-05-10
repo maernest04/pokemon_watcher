@@ -5,7 +5,7 @@
 
 ## Project Overview
 
-A web application that monitors eBay listings for Pokémon cards, sends Discord alerts for new deals, compares prices against TCGPlayer market data, and optionally scores card centering from listing photos. Up to ~5 friends share one deployment, each with their own login, dashboard, and Discord channel for alerts.
+A web application that monitors eBay listings for Pokémon cards, sends Discord alerts for new deals, compares prices against PokeDATA market data, and optionally scores card centering from listing photos. Up to ~5 friends share one deployment, each with their own login, dashboard, and Discord channel for alerts.
 
 ---
 
@@ -14,11 +14,11 @@ A web application that monitors eBay listings for Pokémon cards, sends Discord 
 - **Auth UI:** One screen (or clear tab/link) for **login and sign-up**, like a typical site. Backend: `POST /api/auth/register` and `POST /api/auth/login` with **bcrypt** password hashing only. No email verification, OAuth, or password-reset flow for MVP.
 - **Recent alerts feed (Option B):** The dashboard “last 20 alerts” list shows **only listings where a Discord message was actually sent**. On each successful send, **insert a row into `alerts`**. Do not surface rows that exist only in `seen_listings` if Discord was skipped (e.g. below deal threshold). API: e.g. `GET /api/alerts` (or nested under user/dashboard) returning the last 20 for the authenticated user, reverse chronological by `sent_at`.
 - **eBay usage:** **Read-only search**: find listings with the user’s query and filters, **sort by newest** (`StartTimeNewest`). The app **never** purchases or checks out; it only detects candidate deals and **notifies** via Discord. Listing-mode rule: `buy_it_now` alerts only when within deal threshold; `auction` alerts on every new auction listing.
-- **TCGPlayer / discovery scraping:** Start with `requests` + BeautifulSoup and **rotated user-agents**. If blocks or failures repeat, **change strategy** (e.g. alternate HTTP stacks such as `httpx`, backoff, different connection patterns, optional headless-browser path) instead of relying on a single brittle client. On failure for a card, log and leave `price_cache` unchanged.
+- **PokeDATA / discovery scraping:** Start with `requests` + BeautifulSoup and **rotated user-agents**. If blocks or failures repeat, **change strategy** (e.g. alternate HTTP stacks such as `httpx`, backoff, different connection patterns, optional headless-browser path) instead of relying on a single brittle client. On failure for a card, log and leave `price_cache` unchanged.
 - **Manual market-price override:** Each search can optionally define `manual_market_price`. When set, alert/deal math uses this value instead of scraped/cache market data. Override can be removed to return to scraped pricing.
-- **TCGPlayer discovery input mode (UI + behavior):**
+- **PokeDATA discovery input mode (UI + behavior):**
   - **Mode 1 (freeform):** user enters a raw card query string; backend uses it directly for eBay keyword matching and for PokeDATA discovery via `https://www.pokedata.io/cards?q={user_query}`.
-  - **Mode 2 (structured fields):** user enters Pokémon name + (optional) card type + set number + card number (e.g. `199/165`); backend builds a discovery query and uses it for PokeDATA/TCGPlayer discovery.
+  - **Mode 2 (structured fields):** user enters Pokémon name + (optional) card type + set number + card number (e.g. `199/165`); backend builds a discovery query and uses it for PokeDATA/PokeDATA discovery.
 - **Frontend delivery:** **Vite production build** served as **static assets** (Railway static hosting or minimal static file server). Same Pokémon pixel-art UI goals; no requirement for a heavy server-rendered frontend.
 
 ---
@@ -32,7 +32,7 @@ A web application that monitors eBay listings for Pokémon cards, sends Discord 
 | Database | SQLite + SQLAlchemy ORM | Zero-config, file-based, perfect for small shared apps |
 | Task Scheduler | APScheduler (AsyncIOScheduler) | In-process cron jobs, no Redis/Celery needed |
 | eBay Integration | eBay Finding API (official) | `ebaysdk` Python library |
-| Price Data | Direct TCGPlayer scrape | Staggered nightly at 12:00 AM PST, one card/minute |
+| Price Data | Direct PokeDATA scrape | Staggered nightly at 12:00 AM PST, one card/minute |
 | Discord Alerts | discord.py (bot) | Webhook per user channel |
 | Deployment | Railway | Free $5/month credit, always-on, easy deploys |
 | Auth | JWT tokens + bcrypt password hashing | Simple, stateless, no OAuth complexity |
@@ -138,7 +138,7 @@ Rows are created **only when** the app successfully sends a Discord alert for th
 | Column | Type | Notes |
 |---|---|---|
 | id | INTEGER PK | |
-| card_query | TEXT UNIQUE | Normalized search string used to look up TCGPlayer |
+| card_query | TEXT UNIQUE | Normalized search string used to look up PokeDATA |
 | market_price | FLOAT NULLABLE | Most recent scraped price |
 | last_updated | DATETIME | Set at midnight PST run |
 
@@ -189,7 +189,7 @@ For each active search_query across all users:
 
 ---
 
-### 2. Nightly TCGPlayer Price Scrape (12:00 AM PST)
+### 2. Nightly PokeDATA Price Scrape (12:00 AM PST)
 
 ```
 Collect all unique card_query values from:
@@ -297,7 +297,7 @@ All return `{ success: bool, message: str, data: ... }` for easy display in the 
 - **Test Panel** section:
   - "Send Test Discord Message" button
   - "Ping eBay API" button (tests credentials)
-  - "Test TCGPlayer Scrape" button (input field for a query to test)
+  - "Test PokeDATA Scrape" button (input field for a query to test)
   - Each button shows a status result inline (✅ success / ❌ error + message)
 - Change password form
 
@@ -372,14 +372,14 @@ FRONTEND_URL=http://localhost:5173
 - [x] Seen listings deduplication
 - [x] Discord bot sends formatted alert embeds
 - [x] Per-user channel routing
-- [x] TCGPlayer nightly scrape (12 AM PST, 60s stagger)
+- [x] PokeDATA nightly scrape (12 AM PST, 60s stagger)
 - [x] Price cache used in alert embeds
 - [x] Deal threshold filtering
 - [x] Optional manual market-price override per search with validation and precedence over `price_cache`
 - [x] Listing-type behavior: buy-it-now alerts require threshold pass; auction alerts always send
 - [x] CRUD for search queries (per user)
 - [ ] Settings page: Discord channel ID save
-- [ ] Test panel: Discord, eBay, TCGPlayer buttons
+- [ ] Test panel: Discord, eBay, PokeDATA buttons
 - [ ] React frontend with Pokémon pixel art theme
 - [ ] Railway deployment config
 - [x] `.env.example` with all required keys
