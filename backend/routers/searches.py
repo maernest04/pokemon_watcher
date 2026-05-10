@@ -18,7 +18,7 @@ class SearchQueryCreate(BaseModel):
     query_string: str = Field(min_length=1, max_length=512)
     is_graded: bool = False
     character_name: str | None = Field(default=None, max_length=256)
-    listing_type: Literal["buy_it_now", "auction"] = "buy_it_now"
+    listing_type: Literal["buy_it_now", "auction", "both"] = "buy_it_now"
     manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
@@ -40,7 +40,7 @@ class SearchQueryUpdate(BaseModel):
     query_string: str | None = Field(default=None, min_length=1, max_length=512)
     is_graded: bool | None = None
     character_name: str | None = Field(default=None, max_length=256)
-    listing_type: Literal["buy_it_now", "auction"] | None = None
+    listing_type: Literal["buy_it_now", "auction", "both"] | None = None
     manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
@@ -55,7 +55,7 @@ class SearchQueryResponse(BaseModel):
     query_string: str
     is_graded: bool
     character_name: str | None
-    listing_type: Literal["buy_it_now", "auction"]
+    listing_type: Literal["buy_it_now", "auction", "both"]
     manual_market_price: float | None
     min_price: float | None
     max_price: float | None
