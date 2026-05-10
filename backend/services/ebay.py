@@ -70,6 +70,15 @@ def search_listings(search_query: SearchQuery) -> list[dict[str, Any]]:
     
     filters = []
     
+    # Only USA listings
+    filters.append("itemLocationCountry:US")
+    
+    # Grading Filter
+    if search_query.grading_type == "ungraded":
+        filters.append("-title:(PSA,BGS,CGC,Grade,Graded)")
+    elif search_query.grading_type == "graded":
+        filters.append("title:(PSA,BGS,CGC,Grade,Graded)")
+    
     # Buying Options (Listing Type)
     if search_query.listing_type == "buy_it_now":
         filters.append("buyingOptions:{FIXED_PRICE}")
@@ -121,7 +130,8 @@ def search_listings(search_query: SearchQuery) -> list[dict[str, Any]]:
             "price": _to_float(item.get("price", {}).get("value")),
             "url": item.get("itemWebUrl"),
             "image_url": item.get("image", {}).get("imageUrl"),
-            "listing_type": normalized_type
+            "listing_type": normalized_type,
+            "created_at_raw": item.get("itemCreationDate")
         })
         
     return listings

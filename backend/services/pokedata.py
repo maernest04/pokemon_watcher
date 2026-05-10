@@ -170,3 +170,30 @@ def scrape_market_price(card_query: str, *, debug_browser: bool = False) -> dict
     except ValueError:
         return {"market_price": None, "product_url": search_url, "error": f"Float conversion failed for: {market_raw}", "debug": debug}
     return {"market_price": price, "product_url": search_url, "error": None, "debug": debug}
+
+
+def update_market_price_cache(card_query: str, db: Any) -> float | None:
+    from datetime import datetime, timezone
+    from sqlalchemy import select
+    from models import PriceCache
+
+    cq = " ".join(card_query.strip().lower().split())
+    if not cq:
+        return None
+
+    try:
+        result = scrape_market_price(cq)
+    except Exception:
+        return None
+
+    market_price = result.get("market_price")
+    if market_price is not None:
+        cache = db.scalar(select(PriceCache).where(PriceCache.card_query == cq))
+        if cache is None:
+            cache = PriceCache(card_query=cq)
+            db.add(cache)
+        cache.market_price = market_price
+        cache.last_updated = datetime.now(timezone.utc)
+        db.commit()
+    
+    return market_price

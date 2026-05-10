@@ -82,9 +82,16 @@ def _send_listing_alert(
     if pct_below_market is not None and pct_below_market < 0:
         color = 0xF17373
 
+    # Timezone conversion for Discord message
+    tz_name = os.environ.get("TZ", "America/Los_Angeles")
+    local_tz = pytz.timezone(tz_name)
+    now_local = datetime.now(timezone.utc).astimezone(local_tz)
+    time_str = now_local.strftime("%I:%M:%S %p")
+
     fields = [
         {"name": "Listing Price", "value": f"${price:.2f}" if price is not None else "Unknown", "inline": True},
         {"name": "Market Price", "value": comparison_text, "inline": True},
+        {"name": "Alert Time", "value": f"{time_str} ({tz_name})", "inline": True},
         {"name": "Search Query", "value": search_query.query_string, "inline": False},
         {"name": "View Listing", "value": f"[Click here to view]({listing.get('url') or ''})", "inline": False},
     ]
@@ -125,6 +132,21 @@ def poll_search_query(search_query_id: str) -> None:
             )
             if existing_seen is not None:
                 continue
+
+            # Freshness Filter: Skip listings older than 60 minutes
+            created_at_raw = listing.get("created_at_raw")
+            if created_at_raw:
+                try:
+                    # Handle 'Z' suffix for UTC
+                    created_at = datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
+                    age = datetime.now(timezone.utc) - created_at
+                    if age.total_seconds() > 3600:
+                        db.add(SeenListing(search_query_id=search_query.id, ebay_item_id=ebay_item_id))
+                        db.commit()
+                        continue
+                except Exception:
+                    pass
+
             db.add(
                 SeenListing(
                     search_query_id=search_query.id,
