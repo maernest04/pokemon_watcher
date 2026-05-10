@@ -9,6 +9,7 @@ export default function AuthPage({ onAuthenticated }) {
   const [mode, setMode] = useState("login")
   const [form, setForm] = useState(initialForm)
   const [error, setError] = useState("")
+  const [message, setMessage] = useState("")
   const [busy, setBusy] = useState(false)
 
   async function handleSubmit(event) {
@@ -16,8 +17,13 @@ export default function AuthPage({ onAuthenticated }) {
     setBusy(true)
     setError("")
     try {
-      await onAuthenticated(mode, form)
-      setForm(initialForm)
+      const result = await onAuthenticated(mode, form)
+      if (result && result.message) {
+        setMessage(result.message)
+        setForm(initialForm)
+      } else {
+        setForm(initialForm)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong")
     } finally {
@@ -92,6 +98,7 @@ export default function AuthPage({ onAuthenticated }) {
             />
           </label>
           {error ? <p className="form-error">{error}</p> : null}
+          {message ? <p className="form-success">{message}</p> : null}
           <button type="submit" disabled={busy}>
             {busy ? "Working..." : mode === "login" ? "Login" : "Create account"}
           </button>

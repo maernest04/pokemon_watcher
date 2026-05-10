@@ -115,3 +115,30 @@ export function testPokedata(payload) {
     body: JSON.stringify(payload),
   })
 }
+export function adminListUsers() {
+  return request("/api/users/admin/users")
+}
+
+export function adminApproveUser(userId) {
+  return request(`/api/users/admin/users/${userId}/approve`, {
+    method: "POST",
+  })
+}
+
+export function adminUnapproveUser(userId) {
+  return request(`/api/users/admin/users/${userId}/unapprove`, {
+    method: "POST",
+  })
+}
+
+export function adminToggleAdmin(userId) {
+  return request(`/api/users/admin/users/${userId}/toggle-admin`, {
+    method: "POST",
+  })
+}
+
+export function adminDeleteUser(userId) {
+  return request(`/api/users/admin/users/${userId}`, {
+    method: "DELETE",
+  })
+}

@@ -35,9 +35,12 @@ export default function App() {
   async function handleAuthenticated(mode, credentials) {
     const action = mode === "signup" ? register : login
     const authData = await action(credentials)
-    setToken(authData.access_token)
-    const me = await getMe()
-    setUser(me)
+    if (authData.access_token) {
+      setToken(authData.access_token)
+      const me = await getMe()
+      setUser(me)
+    }
+    return authData
   }
 
   function handleLogout() {
