@@ -9,9 +9,15 @@ import {
   testPokedata,
   updateMe,
   updateSearch,
+  adminListUsers,
+  adminApproveUser,
+  adminUnapproveUser,
+  adminToggleAdmin,
+  adminDeleteUser,
 } from "../api"
 
 const SEARCHES_PER_PAGE = 5
+const ALERTS_PER_PAGE = 5
 
 const emptyForm = {
   pokemon_name: "",
@@ -22,7 +28,7 @@ const emptyForm = {
   manual_market_price: "",
   min_price: "",
   max_price: "",
-  deal_threshold: "10",
+  deal_threshold: "",
   is_active: true,
 }
 
@@ -342,7 +348,11 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   const [createForm, setCreateForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState(emptyForm)
+  const [view, setView] = useState("dashboard")
+  const [adminUsers, setAdminUsers] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
+  const [alertsPage, setAlertsPage] = useState(1)
+  const [showCreateForm, setShowCreateForm] = useState(false)
   const [discordChannelId, setDiscordChannelId] = useState(user.discord_channel_id || "")
   const [pokedataQuery, setPokedataQuery] = useState("charizard 151 199/165")
   const [selectedTestSearchId, setSelectedTestSearchId] = useState("")
@@ -365,11 +375,17 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     () => searches.find((search) => search.id === editingId) || null,
     [editingId, searches],
   )
-  const totalPages = Math.max(1, Math.ceil(searches.length / SEARCHES_PER_PAGE))
+  const totalPages = Math.ceil(searches.length / SEARCHES_PER_PAGE)
   const paginatedSearches = useMemo(() => {
     const startIndex = (currentPage - 1) * SEARCHES_PER_PAGE
     return searches.slice(startIndex, startIndex + SEARCHES_PER_PAGE)
   }, [currentPage, searches])
+
+  const paginatedAlerts = useMemo(() => {
+    const startIndex = (alertsPage - 1) * ALERTS_PER_PAGE
+    return alerts.slice(startIndex, startIndex + ALERTS_PER_PAGE)
+  }, [alertsPage, alerts])
+  const totalAlertsPages = Math.ceil(alerts.length / ALERTS_PER_PAGE)
 
   useEffect(() => {
     loadSearches()
@@ -415,6 +431,49 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
       setAlerts([])
     } finally {
       setAlertsLoading(false)
+    }
+  }
+
+  async function loadAdminUsers() {
+    if (!user.is_admin) return
+    try {
+      const data = await adminListUsers()
+      setAdminUsers(data)
+    } catch (err) {
+      console.error("Failed to load admin users", err)
+    }
+  }
+
+  async function handleApprove(userId, approved) {
+    try {
+      if (approved) {
+        await adminApproveUser(userId)
+      } else {
+        await adminUnapproveUser(userId)
+      }
+      await loadAdminUsers()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to update user")
+    }
+  }
+
+  async function handleToggleAdmin(userId) {
+    if (!window.confirm("Are you sure you want to change this user's admin status?")) return
+    try {
+      await adminToggleAdmin(userId)
+      await loadAdminUsers()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to toggle admin status")
+    }
+  }
+
+  async function handleAdminDelete(userId) {
+    if (!window.confirm("Are you sure you want to PERMANENTLY DELETE this user and all their searches? This cannot be undone.")) return
+    try {
+      await adminDeleteUser(userId)
+      await loadAdminUsers()
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete user")
     }
   }
 
@@ -593,7 +652,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     setSaving(true)
     try {
       await api.post(`/searches/${searchId}/refresh-market`)
-      await fetchSearches()
+      await loadSearches()
     } catch (err) {
       console.error("Failed to refresh market price", err)
     } finally {
@@ -636,264 +695,378 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
         </button>
       </header>
 
-      <section className="dashboard-panel">
-        <div className="panel-header">
-          <h2>Searches</h2>
-          <button type="button" className="secondary-button" onClick={loadSearches}>
-            Refresh
+      {user.is_admin && (
+        <nav className="dashboard-nav">
+          <button
+            type="button"
+            className={view === "dashboard" ? "is-active" : ""}
+            onClick={() => setView("dashboard")}
+          >
+            Dashboard
           </button>
-        </div>
-        <p className="support-copy">
-          Manage the eBay searches that feed your alerts.
-        </p>
-        {message ? <p className="form-success">{message}</p> : null}
-        {error ? <p className="form-error">{error}</p> : null}
-        {loading ? (
-          <p className="support-copy">Loading searches...</p>
-        ) : searches.length === 0 ? (
-          <p className="support-copy">No searches yet.</p>
-        ) : (
-          <>
-            <div className="search-list compact">
-              {paginatedSearches.map((search) => (
-                <article key={search.id} className="search-row-card">
-                  <div className="search-row">
-                    <div className="search-row-main">
-                      <h3>{search.pokemon_name ? `${search.pokemon_name}${search.set_name ? ' - ' + search.set_name : ''}` : search.query_string}</h3>
-                    </div>
-                    <div className="card-actions">
-                       <button
-                        type="button"
-                        className="secondary-button"
-                        onClick={() => handleRefreshMarket(search.id)}
-                        disabled={saving}
-                      >
-                        Refresh Price
-                      </button>
+          <button
+            type="button"
+            className={view === "admin" ? "is-active" : ""}
+            onClick={() => {
+              setView("admin")
+              loadAdminUsers()
+            }}
+          >
+            Admin Panel
+          </button>
+        </nav>
+      )}
+
+      {view === "admin" && user.is_admin ? (
+        <section className="dashboard-panel">
+          <div className="panel-header">
+            <h2>User Management</h2>
+            <p className="support-copy">Approve or revoke access for users.</p>
+          </div>
+          <div className="admin-user-list">
+            {adminUsers.map((u) => (
+              <div key={u.id} className="admin-user-row">
+                <div className="user-info">
+                  <span className="username">{u.username}</span>
+                  {u.is_admin && <span className="admin-badge">Admin</span>}
+                  {!u.is_approved && <span className="pending-badge">Pending</span>}
+                </div>
+                <div className="user-actions">
+                  {!u.is_admin && (
+                    <button
+                      type="button"
+                      className={u.is_approved ? "danger-button" : "primary-button"}
+                      onClick={() => handleApprove(u.id, !u.is_approved)}
+                    >
+                      {u.is_approved ? "Revoke Access" : "Approve"}
+                    </button>
+                  )}
+                  {u.id !== user.id && (
+                    <>
                       <button
                         type="button"
                         className="secondary-button"
-                        onClick={() => startEditing(search)}
-                        disabled={saving}
+                        onClick={() => handleToggleAdmin(u.id)}
                       >
-                        Edit
+                        {u.is_admin ? "Demote" : "Make Admin"}
                       </button>
                       <button
                         type="button"
                         className="danger-button"
-                        onClick={() => handleDelete(search.id)}
-                        disabled={saving}
+                        onClick={() => handleAdminDelete(u.id)}
                       >
                         Delete
                       </button>
-                    </div>
-                  </div>
-                  {editingId === search.id ? (
-                    <div className="inline-edit-panel">
-                      <SearchForm
-                        form={editForm}
-                        onChange={handleFormChange(setEditForm)}
-                        onSubmit={handleUpdate}
-                        onCancel={cancelEditing}
-                        submitLabel="Save changes"
-                        busy={saving}
-                        compact
-                      />
-                    </div>
-                  ) : null}
-                </article>
-              ))}
-            </div>
-            <div className="pagination-row">
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
-                disabled={currentPage === 1}
-              >
-                Previous
-              </button>
-              <p className="support-copy pagination-label">
-                Page {currentPage} of {totalPages}
-              </p>
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
-                disabled={currentPage === totalPages}
-              >
-                Next
-              </button>
-            </div>
-          </>
-        )}
-      </section>
-
-      <section className="dashboard-single">
-        <section className="dashboard-panel">
-          <SearchForm
-            form={createForm}
-            onChange={handleFormChange(setCreateForm)}
-            onSubmit={handleCreate}
-            submitLabel="Create search"
-            busy={saving}
-          />
-        </section>
-      </section>
-
-      <section className="dashboard-grid single-column">
-        <section className="dashboard-panel">
-          <div className="panel-header">
-            <h2>Settings & Tests</h2>
-          </div>
-          
-          <div className="settings-test-layout">
-            <div className="settings-group">
-              <p className="support-copy">Configure your Discord alert destination.</p>
-              <form className="search-form" onSubmit={handleSaveSettings}>
-                <label className="field">
-                  <span>Discord channel ID</span>
-                  <input
-                    value={discordChannelId}
-                    onChange={(event) => setDiscordChannelId(event.target.value)}
-                    placeholder="123456789012345678"
-                  />
-                </label>
-                {settingsMessage ? <p className="form-success">{settingsMessage}</p> : null}
-                {settingsError ? <p className="form-error">{settingsError}</p> : null}
-                <div className="form-actions">
-                  <button type="submit" disabled={settingsSaving}>
-                    {settingsSaving ? "Saving..." : "Save settings"}
-                  </button>
+                    </>
+                  )}
                 </div>
-              </form>
-            </div>
-
-            <div className="test-divider" />
-
-            <div className="test-stack">
-              <p className="support-copy">Verify your integrations manually.</p>
-              <div className="test-row">
-                <button
-                  type="button"
-                  onClick={runDiscordTest}
-                  disabled={testingAction === "discord"}
-                >
-                  {testingAction === "discord" ? "Testing..." : "Test Discord"}
-                </button>
-                <p className="support-copy">
-                  {testResults.discord?.message || "Send a Discord test message."}
-                </p>
-                <DiscordTestResult result={testResults.discord} />
               </div>
-
-              <div className="test-row">
-                <label className="field">
-                  <span>Search for eBay test</span>
-                  <select
-                    value={selectedTestSearchId}
-                    onChange={(event) => setSelectedTestSearchId(event.target.value)}
-                  >
-                    <option value="">Select a search</option>
-                    {searches.map((search) => (
-                      <option key={search.id} value={search.id}>
-                        {search.query_string}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <button
-                  type="button"
-                  onClick={runEbayTest}
-                  disabled={testingAction === "ebay"}
-                >
-                  {testingAction === "ebay" ? "Testing..." : "Test eBay (Top 5)"}
-                </button>
-                <p className="support-copy">
-                  {testResults.ebay?.message || "Fetch top 5 listings for one saved search."}
-                </p>
-                <EbayTestResult result={testResults.ebay} />
-              </div>
-
-              <div className="test-row">
-                <label className="field">
-                  <span>PokeDATA query</span>
-                  <input
-                    value={pokedataQuery}
-                    onChange={(event) => setPokedataQuery(event.target.value)}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={runPokedataTest}
-                  disabled={testingAction === "pokedata"}
-                >
-                  {testingAction === "pokedata" ? "Testing..." : "Test PokeDATA"}
-                </button>
-                <p className="support-copy">
-                  {testResults.pokedata?.message || "Check current market-price scraping."}
-                </p>
-                <PokedataTestResult result={testResults.pokedata} />
-              </div>
-            </div>
-          </div>
-        </section>
-      </section>
-
-      <section className="dashboard-panel">
-        <div className="panel-header">
-          <h2>Recent alerts</h2>
-          <button type="button" className="secondary-button" onClick={loadAlerts}>
-            Refresh
-          </button>
-        </div>
-        {alertsLoading ? (
-          <p className="support-copy">Loading alerts...</p>
-        ) : alerts.length === 0 ? (
-          <p className="support-copy">No alerts sent yet.</p>
-        ) : (
-          <div className="alerts-list">
-            {alerts.map((alert) => (
-              <article key={alert.id} className="alert-card">
-                <div className="search-card-header">
-                  <div>
-                    <h3>{alert.title}</h3>
-                    <p className="support-copy">{new Date(alert.sent_at).toLocaleString()}</p>
-                  </div>
-                  <a
-                    className="link-button"
-                    href={alert.listing_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    View listing
-                  </a>
-                </div>
-                <dl className="search-meta">
-                  <div>
-                    <dt>Listing price</dt>
-                    <dd>{formatMoney(alert.listing_price)}</dd>
-                  </div>
-                  <div>
-                    <dt>Market price</dt>
-                    <dd>{formatMoney(alert.market_price)}</dd>
-                  </div>
-                  <div>
-                    <dt>{(alert.pct_below_market || 0) > 0 ? 'Below market' : 'Above market'}</dt>
-                    <dd style={{ color: (alert.pct_below_market || 0) > 0 ? '#99f0b4' : '#ff8d8d' }}>
-                      {Math.abs(alert.pct_below_market * 100).toFixed(1)}%
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>Item ID</dt>
-                    <dd>{alert.ebay_item_id}</dd>
-                  </div>
-                </dl>
-              </article>
             ))}
           </div>
-        )}
-      </section>
+        </section>
+      ) : (
+        <>
+          <section className="dashboard-panel">
+            <div className="panel-header">
+              <h2>Searches</h2>
+              <div className="panel-actions">
+                <button
+                  type="button"
+                  className={showCreateForm ? "secondary-button" : "primary-button"}
+                  onClick={() => setShowCreateForm(!showCreateForm)}
+                >
+                  {showCreateForm ? "Cancel" : "Create new search"}
+                </button>
+                <button type="button" className="secondary-button" onClick={loadSearches}>
+                  Refresh
+                </button>
+              </div>
+            </div>
+            {showCreateForm && (
+              <div className="create-form-overlay">
+                <SearchForm
+                  form={createForm}
+                  onChange={handleFormChange(setCreateForm)}
+                  onSubmit={(e) => {
+                    handleCreate(e);
+                    setShowCreateForm(false);
+                  }}
+                  submitLabel="Create search"
+                  busy={saving}
+                  onCancel={() => setShowCreateForm(false)}
+                />
+              </div>
+            )}
+            <p className="support-copy">
+              Manage the eBay searches that feed your alerts.
+            </p>
+            {message ? <p className="form-success">{message}</p> : null}
+            {error ? <p className="form-error">{error}</p> : null}
+            {loading ? (
+              <p className="support-copy">Loading searches...</p>
+            ) : searches.length === 0 ? (
+              <p className="support-copy">No searches yet.</p>
+            ) : (
+              <>
+                <div className="search-list compact">
+                  {paginatedSearches.map((search) => (
+                    <article key={search.id} className="search-row-card">
+                      <div className="search-row">
+                        <div className="search-row-main">
+                          <h3>{search.pokemon_name ? `${search.pokemon_name}${search.set_name ? ' - ' + search.set_name : ''}${search.card_number ? ' - ' + search.card_number : ''}` : search.query_string}</h3>
+                          {search.market_price !== null && search.market_price !== undefined && (
+                            <p className="support-copy" style={{ marginTop: '2px', fontSize: '0.9rem' }}>
+                              Market price: <strong>{formatMoney(search.market_price)}</strong>
+                            </p>
+                          )}
+                        </div>
+                        <div className="card-actions">
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => handleRefreshMarket(search.id)}
+                            disabled={saving}
+                          >
+                            Refresh Price
+                          </button>
+                          <button
+                            type="button"
+                            className="secondary-button"
+                            onClick={() => startEditing(search)}
+                            disabled={saving}
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="danger-button"
+                            onClick={() => handleDelete(search.id)}
+                            disabled={saving}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </div>
+                      {editingId === search.id ? (
+                        <div className="inline-edit-panel">
+                          <SearchForm
+                            form={editForm}
+                            onChange={handleFormChange(setEditForm)}
+                            onSubmit={handleUpdate}
+                            onCancel={cancelEditing}
+                            submitLabel="Save changes"
+                            busy={saving}
+                            compact
+                          />
+                        </div>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+                <div className="pagination-row">
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                    disabled={currentPage === 1}
+                  >
+                    Previous
+                  </button>
+                  <p className="support-copy pagination-label">
+                    Page {currentPage} of {totalPages}
+                  </p>
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
+            )}
+          </section>
+
+
+          <section className="dashboard-grid single-column">
+            <section className="dashboard-panel">
+              <div className="panel-header">
+                <h2>Settings & Tests</h2>
+              </div>
+              
+              <div className="settings-test-layout">
+                <div className="settings-group">
+                  <p className="support-copy">Configure your Discord alert destination.</p>
+                  <form className="search-form" onSubmit={handleSaveSettings}>
+                    <label className="field">
+                      <span>Discord channel ID</span>
+                      <input
+                        value={discordChannelId}
+                        onChange={(event) => setDiscordChannelId(event.target.value)}
+                        placeholder="123456789012345678"
+                      />
+                    </label>
+                    {settingsMessage ? <p className="form-success">{settingsMessage}</p> : null}
+                    {settingsError ? <p className="form-error">{settingsError}</p> : null}
+                    <div className="form-actions">
+                      <button type="submit" disabled={settingsSaving}>
+                        {settingsSaving ? "Saving..." : "Save settings"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+
+                <div className="test-divider" />
+
+                <div className="test-stack">
+                  <p className="support-copy">Verify your integrations manually.</p>
+                  <div className="test-row">
+                    <button
+                      type="button"
+                      onClick={runDiscordTest}
+                      disabled={testingAction === "discord"}
+                    >
+                      {testingAction === "discord" ? "Testing..." : "Test Discord"}
+                    </button>
+                    <p className="support-copy">
+                      {testResults.discord?.message || "Send a Discord test message."}
+                    </p>
+                    <DiscordTestResult result={testResults.discord} />
+                  </div>
+
+                  <div className="test-row">
+                    <label className="field">
+                      <span>Search for eBay test</span>
+                      <select
+                        value={selectedTestSearchId}
+                        onChange={(event) => setSelectedTestSearchId(event.target.value)}
+                      >
+                        <option value="">Select a search</option>
+                        {searches.map((search) => (
+                          <option key={search.id} value={search.id}>
+                            {search.query_string}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={runEbayTest}
+                      disabled={testingAction === "ebay"}
+                    >
+                      {testingAction === "ebay" ? "Testing..." : "Test eBay (Top 5)"}
+                    </button>
+                    <p className="support-copy">
+                      {testResults.ebay?.message || "Fetch top 5 listings for one saved search."}
+                    </p>
+                    <EbayTestResult result={testResults.ebay} />
+                  </div>
+
+                  <div className="test-row">
+                    <label className="field">
+                      <span>PokeDATA query</span>
+                      <input
+                        value={pokedataQuery}
+                        onChange={(event) => setPokedataQuery(event.target.value)}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={runPokedataTest}
+                      disabled={testingAction === "pokedata"}
+                    >
+                      {testingAction === "pokedata" ? "Testing..." : "Test PokeDATA"}
+                    </button>
+                    <p className="support-copy">
+                      {testResults.pokedata?.message || "Check current market-price scraping."}
+                    </p>
+                    <PokedataTestResult result={testResults.pokedata} />
+                  </div>
+                </div>
+              </div>
+            </section>
+          </section>
+
+          <section className="dashboard-panel">
+            <div className="panel-header">
+              <h2>Recent alerts</h2>
+              <button type="button" className="secondary-button" onClick={loadAlerts}>
+                Refresh
+              </button>
+            </div>
+            {alertsLoading ? (
+              <p className="support-copy">Loading alerts...</p>
+            ) : alerts.length === 0 ? (
+              <p className="support-copy">No alerts sent yet.</p>
+            ) : (
+              <div className="alerts-list">
+                {paginatedAlerts.map((alert) => (
+                  <article key={alert.id} className="alert-card">
+                    <div className="search-card-header">
+                      <div>
+                        <h3>{alert.title}</h3>
+                        <p className="support-copy">{new Date(alert.sent_at).toLocaleString()}</p>
+                      </div>
+                      <a
+                        className="link-button"
+                        href={alert.listing_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        View listing
+                      </a>
+                    </div>
+                    <dl className="search-meta">
+                      <div>
+                        <dt>Listing price</dt>
+                        <dd>{formatMoney(alert.listing_price)}</dd>
+                      </div>
+                      <div>
+                        <dt>Market price</dt>
+                        <dd>{formatMoney(alert.market_price)}</dd>
+                      </div>
+                      <div>
+                        <dt>{(alert.pct_below_market || 0) > 0 ? 'Below market' : 'Above market'}</dt>
+                        <dd style={{ color: (alert.pct_below_market || 0) > 0 ? '#99f0b4' : '#ff8d8d' }}>
+                          {Math.abs(alert.pct_below_market * 100).toFixed(1)}%
+                        </dd>
+                      </div>
+                      <div>
+                        <dt>Item ID</dt>
+                        <dd>{alert.ebay_item_id}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                ))}
+              </div>
+            )}
+            {totalAlertsPages > 1 && (
+              <div className="pagination-row">
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setAlertsPage((page) => Math.max(1, page - 1))}
+                  disabled={alertsPage === 1}
+                >
+                  Previous
+                </button>
+                <p className="support-copy pagination-label">
+                  Page {alertsPage} of {totalAlertsPages}
+                </p>
+                <button
+                  type="button"
+                  className="secondary-button"
+                  onClick={() => setAlertsPage((page) => Math.min(totalAlertsPages, page + 1))}
+                  disabled={alertsPage === totalAlertsPages}
+                >
+                  Next
+                </button>
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </main>
   )
 }
