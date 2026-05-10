@@ -90,6 +90,6 @@ def test_ebay(
         return {"success": False, "message": str(exc), "data": []}
     return {
         "success": True,
-        "message": f"Fetched {len(listings)} listings",
-        "data": listings,
+        "message": f"Fetched {min(5, len(listings))} listings",
+        "data": listings[:5],
     }

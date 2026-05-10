@@ -1,4 +1,10 @@
 import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+# Load .env from project root
+env_path = Path(__file__).resolve().parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -27,7 +33,12 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-_origins = [os.environ.get("FRONTEND_URL", "http://localhost:5173").rstrip("/")]
+_origins = [
+    os.environ.get("FRONTEND_URL", "http://localhost:5173").rstrip("/"),
+    "http://127.0.0.1:5173",
+    "http://localhost:5173",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_origins,

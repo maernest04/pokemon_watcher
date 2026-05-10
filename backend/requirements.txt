@@ -12,3 +12,4 @@ ebaysdk>=2.2,<3
 discord.py>=2.3,<3
 httpx>=0.27,<1
 playwright>=1.54,<2
+python-dotenv>=1.0.0,<2
