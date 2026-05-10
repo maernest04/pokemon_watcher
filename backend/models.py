@@ -32,8 +32,10 @@ class SearchQuery(Base):
     id: Mapped[str] = mapped_column(primary_key=True, default=lambda: str(uuid4()))
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     query_string: Mapped[str] = mapped_column()
-    is_graded: Mapped[bool] = mapped_column(default=False)
-    character_name: Mapped[str | None] = mapped_column(nullable=True)
+    pokemon_name: Mapped[str | None] = mapped_column(nullable=True)
+    set_name: Mapped[str | None] = mapped_column(nullable=True)
+    card_number: Mapped[str | None] = mapped_column(nullable=True)
+    grading_type: Mapped[str] = mapped_column(default="ungraded")  # ungraded, graded, both
     listing_type: Mapped[str] = mapped_column(default="buy_it_now")
     manual_market_price: Mapped[float | None] = mapped_column(nullable=True)
     min_price: Mapped[float | None] = mapped_column(nullable=True)

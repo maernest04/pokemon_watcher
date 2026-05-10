@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -16,8 +16,10 @@ router = APIRouter(prefix="/api/searches", tags=["searches"])
 
 class SearchQueryCreate(BaseModel):
     query_string: str = Field(min_length=1, max_length=512)
-    is_graded: bool = False
-    character_name: str | None = Field(default=None, max_length=256)
+    pokemon_name: str | None = Field(default=None, max_length=256)
+    set_name: str | None = Field(default=None, max_length=256)
+    card_number: str | None = Field(default=None, max_length=128)
+    grading_type: Literal["ungraded", "graded", "both"] = "both"
     listing_type: Literal["buy_it_now", "auction", "both"] = "buy_it_now"
     manual_market_price: float | None = None
     min_price: float | None = None
@@ -38,8 +40,10 @@ class SearchQueryCreate(BaseModel):
 
 class SearchQueryUpdate(BaseModel):
     query_string: str | None = Field(default=None, min_length=1, max_length=512)
-    is_graded: bool | None = None
-    character_name: str | None = Field(default=None, max_length=256)
+    pokemon_name: str | None = Field(default=None, max_length=256)
+    set_name: str | None = Field(default=None, max_length=256)
+    card_number: str | None = Field(default=None, max_length=128)
+    grading_type: Literal["ungraded", "graded", "both"] | None = None
     listing_type: Literal["buy_it_now", "auction", "both"] | None = None
     manual_market_price: float | None = None
     min_price: float | None = None
@@ -53,8 +57,10 @@ class SearchQueryResponse(BaseModel):
 
     id: UUID
     query_string: str
-    is_graded: bool
-    character_name: str | None
+    grading_type: str
+    pokemon_name: str | None
+    set_name: str | None
+    card_number: str | None
     listing_type: Literal["buy_it_now", "auction", "both"]
     manual_market_price: float | None
     min_price: float | None
@@ -94,14 +100,17 @@ def list_searches(
 @router.post("", response_model=SearchQueryResponse, status_code=status.HTTP_201_CREATED)
 def create_search(
     body: SearchQueryCreate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
     sq = SearchQuery(
         user_id=user.id,
         query_string=body.query_string,
-        is_graded=body.is_graded,
-        character_name=body.character_name,
+        pokemon_name=body.pokemon_name,
+        set_name=body.set_name,
+        card_number=body.card_number,
+        grading_type=body.grading_type,
         listing_type=body.listing_type,
         manual_market_price=body.manual_market_price,
         min_price=body.min_price,
@@ -112,6 +121,11 @@ def create_search(
     db.add(sq)
     db.commit()
     db.refresh(sq)
+
+    if sq.manual_market_price is None:
+        from services.pokedata import update_market_price_cache
+        background_tasks.add_task(update_market_price_cache, sq.query_string, db)
+
     return sq
 
 
@@ -146,6 +160,19 @@ def update_search(
         )
     db.add(sq)
     db.commit()
+    db.refresh(sq)
+    return sq
+
+
+@router.post("/{search_id}/refresh-market", response_model=SearchQueryResponse)
+def refresh_market_price(
+    search_id: UUID,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    sq = _get_owned_search(db, user, search_id)
+    from services.pokedata import update_market_price_cache
+    update_market_price_cache(sq.query_string, db)
     db.refresh(sq)
     return sq
 
