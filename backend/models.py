@@ -46,7 +46,9 @@ class SearchQuery(Base):
     seen_listings: Mapped[list["SeenListing"]] = relationship(
         back_populates="search_query", cascade="all, delete-orphan"
     )
-    alerts: Mapped[list["Alert"]] = relationship(back_populates="search_query")
+    alerts: Mapped[list["Alert"]] = relationship(
+        back_populates="search_query", cascade="all, delete-orphan"
+    )
 
 
 class SeenListing(Base):
