@@ -17,42 +17,22 @@ const emptyForm = {
   pokemon_name: "",
   set_name: "",
   card_number: "",
+  grading_type: "both",
   listing_type: "buy_it_now",
   manual_market_price: "",
   min_price: "",
   max_price: "",
-  deal_threshold: "",
-  is_graded: false,
+  deal_threshold: "10",
   is_active: true,
 }
 
-function splitQueryString(search) {
-  const raw = (search.query_string || "").trim()
-  const tokens = raw ? raw.split(/\s+/) : []
-  const pokemonName = search.character_name || tokens[0] || ""
-  let remaining = tokens
-  if (pokemonName && tokens.length > 0 && tokens[0].toLowerCase() === pokemonName.toLowerCase()) {
-    remaining = tokens.slice(1)
-  }
-  let cardNumber = ""
-  if (remaining.length > 0 && remaining[remaining.length - 1].includes("/")) {
-    cardNumber = remaining[remaining.length - 1]
-    remaining = remaining.slice(0, -1)
-  }
-  const setName = remaining.join(" ")
-  return {
-    pokemon_name: pokemonName,
-    set_name: setName,
-    card_number: cardNumber,
-  }
-}
 
 function formFromSearch(search) {
-  const queryParts = splitQueryString(search)
   return {
-    pokemon_name: queryParts.pokemon_name,
-    set_name: queryParts.set_name,
-    card_number: queryParts.card_number,
+    pokemon_name: search.pokemon_name || "",
+    set_name: search.set_name || "",
+    card_number: search.card_number || "",
+    grading_type: search.grading_type || "both",
     listing_type: search.listing_type ?? "buy_it_now",
     manual_market_price:
       search.manual_market_price === null ? "" : String(search.manual_market_price),
@@ -71,7 +51,10 @@ function normalizePayload(form) {
   const cardNumber = form.card_number.trim()
   return {
     query_string: [pokemonName, setName, cardNumber].filter(Boolean).join(" ").toLowerCase(),
-    character_name: pokemonName || null,
+    pokemon_name: pokemonName || null,
+    set_name: setName || null,
+    card_number: cardNumber || null,
+    grading_type: form.grading_type,
     listing_type: form.listing_type,
     manual_market_price:
       form.manual_market_price === "" ? null : Number(form.manual_market_price),
@@ -211,15 +194,6 @@ function SearchForm({
 }) {
   return (
     <form className="search-form" onSubmit={onSubmit}>
-      {compact ? (
-        <div className="inline-form-header">
-          <h4>{title}</h4>
-        </div>
-      ) : (
-        <div className="panel-header">
-          <h2>{title}</h2>
-        </div>
-      )}
 
       <div className="search-grid">
         <label className="field">
@@ -321,25 +295,15 @@ function SearchForm({
         </label>
       </div>
 
-      <div className="query-preview">
-        <span>Built query</span>
-        <strong>
-          {[form.pokemon_name.trim(), form.set_name.trim(), form.card_number.trim()]
-            .filter(Boolean)
-            .join(" ")
-            .toLowerCase() || "—"}
-        </strong>
-      </div>
 
       <div className="toggle-row">
-        <label className="toggle-field">
-          <input
-            name="is_graded"
-            type="checkbox"
-            checked={form.is_graded}
-            onChange={onChange}
-          />
-          <span>Ungraded only</span>
+        <label className="field">
+          <span>Grading</span>
+          <select name="grading_type" value={form.grading_type} onChange={onChange}>
+            <option value="both">Both</option>
+            <option value="ungraded">Ungraded only</option>
+            <option value="graded">Graded only</option>
+          </select>
         </label>
 
         <label className="toggle-field">
@@ -349,7 +313,7 @@ function SearchForm({
             checked={form.is_active}
             onChange={onChange}
           />
-          <span>Active</span>
+          <span>Active (polling eBay)</span>
         </label>
       </div>
 
@@ -625,6 +589,18 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     }
   }
 
+  async function handleRefreshMarket(searchId) {
+    setSaving(true)
+    try {
+      await api.post(`/searches/${searchId}/refresh-market`)
+      await fetchSearches()
+    } catch (err) {
+      console.error("Failed to refresh market price", err)
+    } finally {
+      setSaving(false)
+    }
+  }
+
   function renderSearchSummary(search) {
     const parts = [
       search.query_string,
@@ -683,12 +659,17 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                 <article key={search.id} className="search-row-card">
                   <div className="search-row">
                     <div className="search-row-main">
-                      <h3>{search.character_name || search.query_string}</h3>
-                      <p className="support-copy search-row-summary">
-                        {renderSearchSummary(search)}
-                      </p>
+                      <h3>{search.pokemon_name ? `${search.pokemon_name}${search.set_name ? ' - ' + search.set_name : ''}` : search.query_string}</h3>
                     </div>
                     <div className="card-actions">
+                       <button
+                        type="button"
+                        className="secondary-button"
+                        onClick={() => handleRefreshMarket(search.id)}
+                        disabled={saving}
+                      >
+                        Refresh Price
+                      </button>
                       <button
                         type="button"
                         className="secondary-button"
@@ -710,7 +691,6 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                   {editingId === search.id ? (
                     <div className="inline-edit-panel">
                       <SearchForm
-                        title={`Edit ${search.character_name || search.query_string}`}
                         form={editForm}
                         onChange={handleFormChange(setEditForm)}
                         onSubmit={handleUpdate}
@@ -752,7 +732,6 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
       <section className="dashboard-single">
         <section className="dashboard-panel">
           <SearchForm
-            title="Create search"
             form={createForm}
             onChange={handleFormChange(setCreateForm)}
             onSubmit={handleCreate}
@@ -900,8 +879,10 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                     <dd>{formatMoney(alert.market_price)}</dd>
                   </div>
                   <div>
-                    <dt>Below market</dt>
-                    <dd>{formatAlertPercent(alert.pct_below_market)}</dd>
+                    <dt>{(alert.pct_below_market || 0) > 0 ? 'Below market' : 'Above market'}</dt>
+                    <dd style={{ color: (alert.pct_below_market || 0) > 0 ? '#99f0b4' : '#ff8d8d' }}>
+                      {Math.abs(alert.pct_below_market * 100).toFixed(1)}%
+                    </dd>
                   </div>
                   <div>
                     <dt>Item ID</dt>
