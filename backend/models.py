@@ -18,6 +18,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(unique=True, index=True)
     password_hash: Mapped[str] = mapped_column()
     discord_channel_id: Mapped[str | None] = mapped_column(nullable=True)
+    is_admin: Mapped[bool] = mapped_column(default=False)
+    is_approved: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
     search_queries: Mapped[list["SearchQuery"]] = relationship(

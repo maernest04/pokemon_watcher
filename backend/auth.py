@@ -13,7 +13,11 @@ from models import User
 
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRE_HOURS = 24
+JWT_EXPIRE_HOURS = 24 * 30  # 30 days
+
+# In-memory rate limiting: {username: attempts}
+login_attempts = {}
+MAX_LOGIN_ATTEMPTS = 10
 
 security = HTTPBearer()
 
@@ -78,5 +82,10 @@ def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
+        )
+    if not user.is_approved:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account pending approval",
         )
     return user

@@ -15,6 +15,8 @@ class UserMeResponse(BaseModel):
     id: int
     username: str
     discord_channel_id: str | None
+    is_admin: bool
+    is_approved: bool
 
 
 class MePatchBody(BaseModel):
@@ -22,8 +24,16 @@ class MePatchBody(BaseModel):
 
 
 class ChangePasswordBody(BaseModel):
-    current_password: str = Field(min_length=1, max_length=128)
-    new_password: str = Field(min_length=1, max_length=128)
+    current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AdminUserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    username: str
+    is_approved: bool
+    is_admin: bool
 
 
 @router.get("/me", response_model=UserMeResponse)
@@ -59,5 +69,104 @@ def change_password(
         )
     user.password_hash = hash_password(body.new_password)
     db.add(user)
+    db.commit()
+    return None
+
+
+@router.get("/admin/users", response_model=list[AdminUserResponse])
+def admin_list_users(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    from sqlalchemy import select
+    return db.scalars(select(User).order_by(User.created_at.desc())).all()
+
+
+@router.post("/admin/users/{target_id}/approve", response_model=AdminUserResponse)
+def admin_approve_user(
+    target_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    target = db.get(User, target_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    target.is_approved = True
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.post("/admin/users/{target_id}/unapprove", response_model=AdminUserResponse)
+def admin_unapprove_user(
+    target_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    if target_id == user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot unapprove yourself")
+    
+    target = db.get(User, target_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    target.is_approved = False
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.post("/admin/users/{target_id}/toggle-admin", response_model=AdminUserResponse)
+def admin_toggle_admin(
+    target_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    if target_id == user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot demote yourself")
+    
+    target = db.get(User, target_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    target.is_admin = not target.is_admin
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return target
+
+
+@router.delete("/admin/users/{target_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_user(
+    target_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    if target_id == user.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete yourself")
+    
+    target = db.get(User, target_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    db.delete(target)
     db.commit()
     return None
