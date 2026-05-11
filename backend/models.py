@@ -40,8 +40,9 @@ class SearchQuery(Base):
     set_name: Mapped[str | None] = mapped_column(nullable=True)
     card_number: Mapped[str | None] = mapped_column(nullable=True)
     grading_type: Mapped[str] = mapped_column(default="ungraded")  # ungraded, graded, both
+    language: Mapped[str] = mapped_column(default="english")  # english, japanese
     listing_type: Mapped[str] = mapped_column(default="buy_it_now")
-    manual_market_price: Mapped[float | None] = mapped_column(nullable=True)
+    pokedata_url: Mapped[str | None] = mapped_column(nullable=True)
     min_price: Mapped[float | None] = mapped_column(nullable=True)
     max_price: Mapped[float | None] = mapped_column(nullable=True)
     deal_threshold: Mapped[float | None] = mapped_column(nullable=True)

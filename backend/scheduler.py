@@ -32,8 +32,6 @@ def get_cached_market_price(db, query_string: str) -> float | None:
 
 
 def _resolve_market_price(search_query: SearchQuery, db) -> float | None:
-    if search_query.manual_market_price is not None:
-        return search_query.manual_market_price
     return get_cached_market_price(db, search_query.query_string)
 
 
@@ -281,29 +279,39 @@ async def poll_active_searches_job() -> None:
 async def refresh_market_prices_job() -> None:
     db = SessionLocal()
     try:
-        queries = db.scalars(
-            select(SearchQuery.query_string).where(SearchQuery.is_active.is_(True))
+        # Find all active searches that need market price updates
+        searches = db.scalars(
+            select(SearchQuery)
+            .where(SearchQuery.is_active.is_(True))
+            .where(SearchQuery.language == "english")
         ).all()
-        unique_queries: list[str] = []
-        seen_queries: set[str] = set()
-        for query in queries:
-            normalized_query = _normalize_query(query)
-            if not normalized_query or normalized_query in seen_queries:
-                continue
-            seen_queries.add(normalized_query)
-            unique_queries.append(normalized_query)
+        
+        # Group by (query_string, pokedata_url) to avoid redundant scrapes
+        to_refresh = []
+        seen = set()
+        for s in searches:
+            key = (s.query_string.strip().lower(), s.pokedata_url)
+            if key not in seen:
+                seen.add(key)
+                to_refresh.append(s)
     finally:
         db.close()
-    for index, card_query in enumerate(unique_queries):
+
+    for index, search in enumerate(to_refresh):
         db = SessionLocal()
         try:
-            update_market_price_cache(card_query, db)
-        except Exception:
-            pass
+            update_market_price_cache(
+                search.query_string, 
+                db, 
+                override_url=search.pokedata_url
+            )
+        except Exception as e:
+            logger.error(f"Error refreshing market price for '{search.query_string}': {e}")
         finally:
             db.close()
         
-        if index < len(unique_queries) - 1:
+        if index < len(to_refresh) - 1:
+            # Rate limit to avoid being blocked by PokeDATA
             await asyncio.sleep(60)
 
 

@@ -85,11 +85,21 @@ def search_listings(
         "category_ids": "261032"
     }
 
+    aspects: list[str] = []
     grading = getattr(search_query, "grading_type", "both")
     if grading == "graded":
-        params["aspect_filter"] = "categoryId:261032,Graded:{Yes}"
+        aspects.append("Graded:{Yes}")
     elif grading == "ungraded":
-        params["aspect_filter"] = "categoryId:261032,Graded:{No}"
+        aspects.append("Graded:{No}")
+
+    language = getattr(search_query, "language", "english")
+    if language == "japanese":
+        aspects.append("Language:{Japanese}")
+    elif language == "english":
+        aspects.append("Language:{English}")
+
+    if aspects:
+        params["aspect_filter"] = "categoryId:261032," + ",".join(aspects)
     
     filters = []
     

@@ -42,6 +42,7 @@ _origins = [
     os.environ.get("FRONTEND_URL", "http://localhost:5173").rstrip("/"),
     "http://127.0.0.1:5173",
     "http://localhost:5173",
+    "https://pokemon-watcher.vercel.app",
 ]
 
 app.add_middleware(

@@ -7,8 +7,15 @@ from alembic import context
 
 import os
 import sys
+from pathlib import Path
+from dotenv import load_dotenv
+
 # Add current directory to path so we can import local modules
 sys.path.append(os.getcwd())
+
+# Load .env from project root
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 from database import Base
 from models import User, SearchQuery, SeenListing, Alert, PriceCache
@@ -16,6 +23,14 @@ from models import User, SearchQuery, SeenListing, Alert, PriceCache
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
 config = context.config
+
+# Honor DATABASE_URL from the environment (overrides alembic.ini),
+# matching the runtime behavior in database.py
+_env_db_url = os.environ.get("DATABASE_URL")
+if _env_db_url:
+    if _env_db_url.startswith("postgres://"):
+        _env_db_url = _env_db_url.replace("postgres://", "postgresql://", 1)
+    config.set_main_option("sqlalchemy.url", _env_db_url)
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
