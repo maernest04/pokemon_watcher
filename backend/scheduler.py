@@ -13,6 +13,12 @@ from services.ebay import search_listings
 from services.pokedata import scrape_market_price, update_market_price_cache
 
 
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
 def _normalize_query(query: str) -> str:
     return " ".join(query.strip().lower().split())
 
@@ -47,14 +53,12 @@ def _should_send_alert(
         return False, None
     pct_below_market = (market_price - listing_price) / market_price
     
-    # Filter out suspiciously low prices (potential fakes/scams)
-    # If price is below 60% of market (i.e. > 40% off), ignore it.
-    if pct_below_market > 0.4:
+    # We no longer filter by deal_threshold. 
+    # We only filter out suspiciously low prices (spam/scams).
+    if pct_below_market is not None and pct_below_market > 0.4:
         return False, pct_below_market
 
-    if deal_threshold is None or pct_below_market >= deal_threshold:
-        return True, pct_below_market
-    return False, pct_below_market
+    return True, pct_below_market
 
 
 def _send_listing_alert(
@@ -90,9 +94,21 @@ def _send_listing_alert(
     now_local = datetime.now(timezone.utc).astimezone(local_tz)
     time_str = now_local.strftime("%I:%M:%S %p")
 
+    # Format the listing creation date
+    raw_date = listing.get("created_at_raw")
+    listing_time_str = "Unknown"
+    if raw_date:
+        try:
+            # eBay format: 2024-05-10T12:34:56.000Z
+            dt = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            listing_time_str = dt.astimezone(local_tz).strftime("%I:%M %p")
+        except:
+            listing_time_str = raw_date
+
     fields = [
         {"name": "Listing Price", "value": f"${price:.2f}" if price is not None else "Unknown", "inline": True},
         {"name": "Market Price", "value": comparison_text, "inline": True},
+        {"name": "Listed At", "value": listing_time_str, "inline": True},
         {"name": "Alert Time", "value": f"{time_str} ({tz_name})", "inline": True},
         {"name": "Search Query", "value": search_query.query_string, "inline": False},
         {"name": "View Listing", "value": f"[Click here to view]({listing.get('url') or ''})", "inline": False},
@@ -114,14 +130,25 @@ def poll_search_query(search_query_id: str) -> None:
         search_query = db.get(SearchQuery, search_query_id)
         if search_query is None or not search_query.is_active:
             return
+        logger.info(f"Polling search: {search_query.query_string} (ID: {search_query.id})")
         user = db.get(User, search_query.user_id)
         if user is None:
+            logger.warning(f"User {search_query.user_id} not found for search {search_query.id}")
             return
         try:
-            listings = search_listings(search_query)
-        except Exception:
+            from services.encryption import decrypt_secret
+            ebay_app_id = user.ebay_app_id
+            ebay_client_secret = decrypt_secret(user.ebay_client_secret)
+            
+            listings = search_listings(search_query, app_id=ebay_app_id, cert_id=ebay_client_secret)
+            logger.info(f"Found {len(listings)} listings on eBay for '{search_query.query_string}'")
+        except Exception as e:
+            logger.error(f"Error searching eBay for '{search_query.query_string}': {e}")
             return
         market_price = _resolve_market_price(search_query, db)
+        seen_count = 0
+        new_listings = []
+
         for listing in listings:
             ebay_item_id = listing.get("ebay_item_id")
             if not ebay_item_id:
@@ -133,22 +160,11 @@ def poll_search_query(search_query_id: str) -> None:
                 )
             )
             if existing_seen is not None:
+                seen_count += 1
                 continue
 
-            # Freshness Filter: Skip listings older than 60 minutes
-            created_at_raw = listing.get("created_at_raw")
-            if created_at_raw:
-                try:
-                    # Handle 'Z' suffix for UTC
-                    created_at = datetime.fromisoformat(created_at_raw.replace("Z", "+00:00"))
-                    age = datetime.now(timezone.utc) - created_at
-                    if age.total_seconds() > 3600:
-                        db.add(SeenListing(search_query_id=search_query.id, ebay_item_id=ebay_item_id))
-                        db.commit()
-                        continue
-                except Exception:
-                    pass
-
+            # This is a new listing
+            new_listings.append(listing)
             db.add(
                 SeenListing(
                     search_query_id=search_query.id,
@@ -156,13 +172,27 @@ def poll_search_query(search_query_id: str) -> None:
                 )
             )
             db.commit()
+
+        logger.info(f"Results for '{search_query.query_string}': {seen_count} seen, {len(new_listings)} new")
+        
+        for listing in new_listings:
+            logger.info(f"  - NEW: {listing.get('title')} -> {listing.get('url')}")
+            
             should_send, pct_below_market = _should_send_alert(
                 listing,
                 market_price,
                 search_query.deal_threshold,
             )
+            
             if not should_send:
+                if pct_below_market is not None and pct_below_market > 0.4:
+                    logger.info(f"    Filtered (SPAM): {pct_below_market*100:.1f}% off")
+                else:
+                    logger.info(f"    Skipping (not a deal): {pct_below_market*100:.1f}% off")
                 continue
+                
+            listing_date = listing.get("created_at_raw", "Unknown date")
+            logger.info(f"    MATCH! [Listed: {listing_date}] Sending Discord alert...")
             try:
                 _send_listing_alert(
                     user,
@@ -171,13 +201,15 @@ def poll_search_query(search_query_id: str) -> None:
                     market_price,
                     pct_below_market,
                 )
-            except Exception:
+            except Exception as e:
+                logger.error(f"    Error sending Discord alert: {e}")
                 continue
+
             db.add(
                 Alert(
                     user_id=user.id,
                     search_query_id=search_query.id,
-                    ebay_item_id=ebay_item_id,
+                    ebay_item_id=listing.get("ebay_item_id"),
                     title=listing.get("title") or search_query.query_string,
                     listing_price=listing.get("price") or 0.0,
                     listing_url=listing.get("url") or "",
@@ -188,6 +220,11 @@ def poll_search_query(search_query_id: str) -> None:
                 )
             )
             db.commit()
+            
+        # Update last_polled_at
+        search_query.last_polled_at = datetime.now(timezone.utc)
+        db.add(search_query)
+        db.commit()
     finally:
         db.close()
 
@@ -195,13 +232,33 @@ def poll_search_query(search_query_id: str) -> None:
 async def poll_active_searches_job() -> None:
     db = SessionLocal()
     try:
-        search_ids = db.scalars(
-            select(SearchQuery.id).where(SearchQuery.is_active.is_(True))
+        now = datetime.now(timezone.utc)
+        # Find searches that are active, for approved users, and due for a poll
+        # A search is due if (now - last_polled_at) >= check_interval_mins
+        # Or if last_polled_at is None (first time)
+        searches = db.scalars(
+            select(SearchQuery)
+            .join(User)
+            .where(SearchQuery.is_active.is_(True))
+            .where(User.is_approved.is_(True))
         ).all()
+        
+        due_search_ids = []
+        for s in searches:
+            if s.last_polled_at is None:
+                due_search_ids.append(s.id)
+                continue
+                
+            elapsed = (now - s.last_polled_at.replace(tzinfo=timezone.utc)).total_seconds() / 60.0
+            if elapsed >= s.check_interval_mins - 0.1: # Small buffer for timing jitter
+                due_search_ids.append(s.id)
+
+        if due_search_ids:
+            logger.info(f"Dynamic Poll: {len(due_search_ids)} searches are due for checking.")
+            for search_id in due_search_ids:
+                poll_search_query(search_id)
     finally:
         db.close()
-    for search_id in search_ids:
-        poll_search_query(search_id)
 
 
 async def refresh_market_prices_job() -> None:
@@ -240,7 +297,7 @@ def create_scheduler() -> AsyncIOScheduler:
     scheduler.add_job(
         poll_active_searches_job,
         "interval",
-        minutes=5,
+        minutes=1,
         id="poll_active_searches",
         replace_existing=True,
     )

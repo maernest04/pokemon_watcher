@@ -20,11 +20,11 @@ class SearchQueryCreate(BaseModel):
     set_name: str | None = Field(default=None, max_length=256)
     card_number: str | None = Field(default=None, max_length=128)
     grading_type: Literal["ungraded", "graded", "both"] = "both"
+    check_interval_mins: int = Field(default=5, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] = "buy_it_now"
     manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
-    deal_threshold: float | None = None
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -44,11 +44,11 @@ class SearchQueryUpdate(BaseModel):
     set_name: str | None = Field(default=None, max_length=256)
     card_number: str | None = Field(default=None, max_length=128)
     grading_type: Literal["ungraded", "graded", "both"] | None = None
+    check_interval_mins: int | None = Field(default=None, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] | None = None
     manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
-    deal_threshold: float | None = None
     is_active: bool | None = None
 
 
@@ -57,15 +57,15 @@ class SearchQueryResponse(BaseModel):
 
     id: UUID
     query_string: str
-    grading_type: str
     pokemon_name: str | None
     set_name: str | None
     card_number: str | None
+    grading_type: str
+    check_interval_mins: int
     listing_type: Literal["buy_it_now", "auction", "both"]
     manual_market_price: float | None
     min_price: float | None
     max_price: float | None
-    deal_threshold: float | None
     is_active: bool
     created_at: datetime
     market_price: float | None = None
@@ -117,11 +117,11 @@ def create_search(
         set_name=body.set_name,
         card_number=body.card_number,
         grading_type=body.grading_type,
+        check_interval_mins=body.check_interval_mins,
         listing_type=body.listing_type,
         manual_market_price=body.manual_market_price,
         min_price=body.min_price,
         max_price=body.max_price,
-        deal_threshold=body.deal_threshold,
         is_active=body.is_active,
     )
     db.add(sq)

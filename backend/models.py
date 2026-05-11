@@ -18,6 +18,8 @@ class User(Base):
     username: Mapped[str] = mapped_column(unique=True, index=True)
     password_hash: Mapped[str] = mapped_column()
     discord_channel_id: Mapped[str | None] = mapped_column(nullable=True)
+    ebay_app_id: Mapped[str | None] = mapped_column(nullable=True)
+    ebay_client_secret: Mapped[str | None] = mapped_column(nullable=True)
     is_admin: Mapped[bool] = mapped_column(default=False)
     is_approved: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
@@ -43,6 +45,8 @@ class SearchQuery(Base):
     min_price: Mapped[float | None] = mapped_column(nullable=True)
     max_price: Mapped[float | None] = mapped_column(nullable=True)
     deal_threshold: Mapped[float | None] = mapped_column(nullable=True)
+    check_interval_mins: Mapped[int] = mapped_column(default=5)
+    last_polled_at: Mapped[datetime | None] = mapped_column(nullable=True)
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=_utcnow)
 
