@@ -6,22 +6,23 @@ import requests
 
 from models import SearchQuery
 
-# Cache for OAuth token
-_token_cache = {
-    "token": None,
-    "expiry": 0
-}
+# Simple cache for OAuth tokens keyed by (app_id, cert_id)
+_token_cache = {}
 
-def _get_oauth_token() -> str:
-    now = time.time()
-    if _token_cache["token"] and now < _token_cache["expiry"] - 60:
-        return _token_cache["token"]
-
-    app_id = os.environ.get("EBAY_APP_ID")
-    cert_id = os.environ.get("EBAY_CLIENT_SECRET")
+def _get_oauth_token(app_id: str | None = None, cert_id: str | None = None) -> str:
+    # Use system env if not provided
+    app_id = app_id or os.environ.get("EBAY_APP_ID")
+    cert_id = cert_id or os.environ.get("EBAY_CLIENT_SECRET")
     
     if not app_id or not cert_id:
         raise RuntimeError("eBay credentials (EBAY_APP_ID/EBAY_CLIENT_SECRET) not configured")
+
+    cache_key = (app_id, cert_id)
+    now = time.time()
+    
+    cached = _token_cache.get(cache_key)
+    if cached and now < cached["expiry"] - 60:
+        return cached["token"]
 
     auth_str = f"{app_id}:{cert_id}"
     b64_auth = base64.b64encode(auth_str.encode()).decode()
@@ -44,10 +45,12 @@ def _get_oauth_token() -> str:
     response.raise_for_status()
     
     data = response.json()
-    _token_cache["token"] = data["access_token"]
-    _token_cache["expiry"] = now + data["expires_in"]
+    _token_cache[cache_key] = {
+        "token": data["access_token"],
+        "expiry": now + data["expires_in"]
+    }
     
-    return _token_cache["token"]
+    return data["access_token"]
 
 def _to_float(value: Any) -> float | None:
     try:
@@ -55,15 +58,42 @@ def _to_float(value: Any) -> float | None:
     except (TypeError, ValueError):
         return None
 
-def search_listings(search_query: SearchQuery) -> list[dict[str, Any]]:
-    token = _get_oauth_token()
+def search_listings(
+    search_query: SearchQuery, 
+    app_id: str | None = None, 
+    cert_id: str | None = None
+) -> list[dict[str, Any]]:
+    token = _get_oauth_token(app_id, cert_id)
     
-    app_id = os.environ.get("EBAY_APP_ID", "")
-    is_sandbox = "SBX" in app_id
+    # Use providing app_id or system one for base_url check
+    effective_app_id = app_id or os.environ.get("EBAY_APP_ID", "")
+    is_sandbox = "SBX" in effective_app_id
     base_url = "https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search" if is_sandbox else "https://api.ebay.com/buy/browse/v1/item_summary/search"
     
+    # Construct query from pokemon_name, set_name, and card_number
+    query_parts = []
+    if search_query.pokemon_name:
+        query_parts.append(search_query.pokemon_name)
+    if search_query.set_name:
+        query_parts.append(search_query.set_name)
+    if search_query.card_number:
+        query_parts.append(search_query.card_number)
+    
+    if query_parts:
+        full_query = " ".join(query_parts)
+    else:
+        # Fallback to query_string if specific fields are empty
+        full_query = search_query.query_string
+
+    grading = getattr(search_query, "grading_type", "both")
+    
+    if grading == "graded":
+        full_query = f"{full_query} graded"
+    elif grading == "ungraded":
+        full_query = f"{full_query} ungraded"
+
     params = {
-        "q": search_query.query_string,
+        "q": full_query,
         "sort": "newly_listed",
         "limit": 20
     }
@@ -73,11 +103,6 @@ def search_listings(search_query: SearchQuery) -> list[dict[str, Any]]:
     # Only USA listings
     filters.append("itemLocationCountry:US")
     
-    # Grading Filter
-    if search_query.grading_type == "ungraded":
-        filters.append("-title:(PSA,BGS,CGC,Grade,Graded)")
-    elif search_query.grading_type == "graded":
-        filters.append("title:(PSA,BGS,CGC,Grade,Graded)")
     
     # Buying Options (Listing Type)
     if search_query.listing_type == "buy_it_now":
@@ -92,10 +117,6 @@ def search_listings(search_query: SearchQuery) -> list[dict[str, Any]]:
         max_p = search_query.max_price or 999999
         filters.append(f"price:[{min_p}..{max_p}],priceCurrency:USD")
     
-    # Condition Filter (Ungraded)
-    if search_query.is_graded:
-        filters.append("conditionIds:{4000}")
-        
     if filters:
         params["filter"] = ",".join(filters)
         
