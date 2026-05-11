@@ -85,18 +85,18 @@ def search_listings(
         # Fallback to query_string if specific fields are empty
         full_query = search_query.query_string
 
-    grading = getattr(search_query, "grading_type", "both")
-    
-    if grading == "graded":
-        full_query = f"{full_query} graded"
-    elif grading == "ungraded":
-        full_query = f"{full_query} ungraded"
-
     params = {
         "q": full_query,
         "sort": "newly_listed",
-        "limit": 20
+        "limit": 20,
+        "category_ids": "261032"
     }
+
+    grading = getattr(search_query, "grading_type", "both")
+    if grading == "graded":
+        params["aspect_filter"] = "categoryId:261032,Graded:{Yes}"
+    elif grading == "ungraded":
+        params["aspect_filter"] = "categoryId:261032,Graded:{No}"
     
     filters = []
     

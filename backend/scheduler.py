@@ -42,6 +42,18 @@ def _should_send_alert(
     market_price: float | None,
     deal_threshold: float | None,
 ) -> tuple[bool, float | None]:
+    # Ignore listings older than 60 minutes to prevent initial spam
+    raw_date = listing.get("created_at_raw")
+    if raw_date:
+        try:
+            created_at = datetime.fromisoformat(raw_date.replace("Z", "+00:00"))
+            now = datetime.now(timezone.utc)
+            age_mins = (now - created_at).total_seconds() / 60.0
+            if age_mins > 60:
+                return False, None
+        except Exception:
+            pass
+
     if listing.get("listing_type") == "auction":
         return True, None
     listing_price = listing.get("price")

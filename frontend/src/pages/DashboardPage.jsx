@@ -284,23 +284,7 @@ function SearchForm({
             placeholder="220"
           />
         </label>
-      </div>
 
-
-      <div className="toggle-row">
-
-        <label className="toggle-field">
-          <input
-            name="is_active"
-            type="checkbox"
-            checked={form.is_active}
-            onChange={onChange}
-          />
-          <span>Active (polling eBay)</span>
-        </label>
-      </div>
-
-      <div className="toggle-row">
         <label className="field">
           <span>Grading</span>
           <select name="grading_type" value={form.grading_type} onChange={onChange}>
@@ -311,7 +295,7 @@ function SearchForm({
         </label>
 
         <label className="field">
-          <span>Check every (mins)</span>
+          <span>Check interval (mins)</span>
           <input
             name="check_interval_mins"
             type="number"
@@ -321,6 +305,19 @@ function SearchForm({
             onChange={onChange}
           />
         </label>
+
+        <div className="field">
+          <span>Search Status</span>
+          <label className="toggle-field" style={{ height: '46px' }}>
+            <input
+              name="is_active"
+              type="checkbox"
+              checked={form.is_active}
+              onChange={onChange}
+            />
+            <span>Active (polling eBay)</span>
+          </label>
+        </div>
       </div>
 
       <div className="form-actions">
