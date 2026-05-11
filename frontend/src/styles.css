@@ -681,34 +681,33 @@ select:focus {
   gap: 6px;
   margin-bottom: 2.5rem;
   padding: 4px;
-  background: rgba(255, 255, 255, 0.04);
+  background: transparent;
   border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 2px solid rgba(0, 0, 0, 0.3);
 }
 
 .dashboard-nav button {
   flex: 1;
-  background: none;
+  background: transparent;
   border: none;
   color: rgba(246, 247, 251, 0.5);
   font-weight: 500;
   cursor: pointer;
   padding: 0.5rem 1rem;
-  border-radius: var(--radius-sm);
+  border-radius: 8px;
   transition: all 0.2s ease;
 }
 
 .dashboard-nav button:hover {
-  color: var(--text-primary);
-  background: var(--bg-secondary);
+  color: #f6f7fb;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 .dashboard-nav button.is-active {
-  color: var(--accent);
-  background: rgba(139, 92, 246, 0.1);
+  color: #6ea8fe;
+  background: rgba(15, 23, 36, 0.88);
 }
 
-/* Admin Panel */
 .admin-user-list {
   display: flex;
   flex-direction: column;
@@ -716,22 +715,14 @@ select:focus {
   margin-top: 1.5rem;
 }
 
-.dashboard-panel {
-  background: var(--bg-primary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 2rem;
-  margin-bottom: 2.5rem;
-}
-
 .admin-user-row {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 1.25rem;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
 }
 
 .user-info {
@@ -742,7 +733,7 @@ select:focus {
 
 .user-info .username {
   font-weight: 600;
-  color: var(--text-primary);
+  color: #f6f7fb;
 }
 
 .admin-badge, .pending-badge {
@@ -755,7 +746,7 @@ select:focus {
 
 .admin-badge {
   background: rgba(139, 92, 246, 0.15);
-  color: var(--accent);
+  color: #8b5cf6;
   border: 1px solid rgba(139, 92, 246, 0.3);
 }
 
@@ -770,23 +761,12 @@ select:focus {
   font-size: 0.875rem;
 }
 
-.form-success {
-  color: #10b981;
-  background: rgba(16, 185, 129, 0.1);
-  padding: 0.75rem 1rem;
-  border-radius: var(--radius-sm);
-  margin-bottom: 1.5rem;
-  font-size: 0.9rem;
-  border: 1px solid rgba(16, 185, 129, 0.2);
-}
-
 .create-form-overlay {
-  background: var(--bg-secondary);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
   padding: 1.5rem;
   margin-bottom: 2rem;
-  box-shadow: var(--shadow-lg);
 }
 
 .panel-actions {

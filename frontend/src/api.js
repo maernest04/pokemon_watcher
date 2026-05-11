@@ -96,6 +96,12 @@ export function listAlerts() {
   return request("/api/alerts/")
 }
 
+export function refreshMarketPrice(searchId) {
+  return request(`/api/searches/${searchId}/refresh-market`, {
+    method: "POST",
+  })
+}
+
 export function testDiscord() {
   return request("/api/test/discord", {
     method: "POST",

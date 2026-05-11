@@ -199,8 +199,10 @@ def poll_search_query(search_query_id: str) -> None:
             if not should_send:
                 if pct_below_market is not None and pct_below_market > 0.4:
                     logger.info(f"    Filtered (SPAM): {pct_below_market*100:.1f}% off")
-                else:
+                elif pct_below_market is not None:
                     logger.info(f"    Skipping (not a deal): {pct_below_market*100:.1f}% off")
+                else:
+                    logger.info(f"    Skipping (too old or no price)")
                 continue
                 
             listing_date = listing.get("created_at_raw", "Unknown date")

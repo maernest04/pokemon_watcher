@@ -4,6 +4,7 @@ import {
   deleteSearch,
   listAlerts,
   listSearches,
+  refreshMarketPrice,
   testDiscord,
   testEbay,
   testPokedata,
@@ -45,7 +46,6 @@ function formFromSearch(search) {
       search.manual_market_price === null ? "" : String(search.manual_market_price),
     min_price: search.min_price === null ? "" : String(search.min_price),
     max_price: search.max_price === null ? "" : String(search.max_price),
-    is_graded: Boolean(search.is_graded),
     is_active: Boolean(search.is_active),
   }
 }
@@ -77,12 +77,6 @@ function formatMoney(value) {
   return `$${Number(value).toFixed(2)}`
 }
 
-function formatAlertPercent(value) {
-  if (value === null || value === undefined) {
-    return "—"
-  }
-  return `${(Number(value) * 100).toFixed(1)}%`
-}
 
 function formatListingType(value) {
   if (value === "auction") {
@@ -186,14 +180,12 @@ function PokedataTestResult({ result }) {
 }
 
 function SearchForm({
-  title,
   form,
   onChange,
   onSubmit,
   onCancel,
   submitLabel,
   busy,
-  compact = false,
 }) {
   return (
     <form className="search-form" onSubmit={onSubmit}>
@@ -656,37 +648,15 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   async function handleRefreshMarket(searchId) {
     setSaving(true)
     try {
-      await api.post(`/searches/${searchId}/refresh-market`)
+      await refreshMarketPrice(searchId)
       await loadSearches()
     } catch (err) {
-      console.error("Failed to refresh market price", err)
+      setError(err instanceof Error ? err.message : "Failed to refresh market price")
     } finally {
       setSaving(false)
     }
   }
 
-  function renderSearchSummary(search) {
-    const parts = [
-      search.query_string,
-      formatListingType(search.listing_type),
-      search.is_active ? "Active" : "Paused",
-    ]
-    if (search.is_graded) {
-      parts.push("Ungraded only")
-    }
-    if (search.manual_market_price !== null) {
-      parts.push(`Market ${formatMoney(search.manual_market_price)}`)
-    }
-    if (search.deal_threshold !== null) {
-      parts.push(`Deal ${formatAlertPercent(search.deal_threshold)}`)
-    }
-    if (search.min_price !== null || search.max_price !== null) {
-      const minLabel = search.min_price === null ? "0" : formatMoney(search.min_price)
-      const maxLabel = search.max_price === null ? "∞" : formatMoney(search.max_price)
-      parts.push(`Range ${minLabel}-${maxLabel}`)
-    }
-    return parts.join(" · ")
-  }
 
   return (
     <main className="dashboard-layout">
@@ -861,7 +831,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                             onCancel={cancelEditing}
                             submitLabel="Save changes"
                             busy={saving}
-                            compact
+
                           />
                         </div>
                       ) : null}
@@ -913,8 +883,8 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                       />
                     </label>
 
-                    <div style={{ marginTop: "16px" }}>
-                      <p className="support-copy" style={{ marginBottom: "8px" }}>
+                    <div style={{ display: "grid", gap: "16px" }}>
+                      <p className="support-copy" style={{ margin: 0 }}>
                         Personal eBay API (Optional)
                       </p>
                       <label className="field">
@@ -925,7 +895,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                           placeholder="Your-App-ID"
                         />
                       </label>
-                      <label className="field" style={{ marginTop: "8px" }}>
+                      <label className="field">
                         <span>eBay Client Secret {user.has_ebay_secret && "(Already set)"}</span>
                         <input
                           type="password"
@@ -1060,12 +1030,14 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                           <dt>Market price</dt>
                           <dd>{formatMoney(alert.market_price)}</dd>
                         </div>
+                        {alert.pct_below_market != null && (
                         <div>
-                          <dt>{(alert.pct_below_market || 0) > 0 ? 'Below market' : 'Above market'}</dt>
-                          <dd style={{ color: (alert.pct_below_market || 0) > 0 ? '#99f0b4' : '#ff8d8d' }}>
+                          <dt>{alert.pct_below_market > 0 ? 'Below market' : 'Above market'}</dt>
+                          <dd style={{ color: alert.pct_below_market > 0 ? '#99f0b4' : '#ff8d8d' }}>
                             {Math.abs(alert.pct_below_market * 100).toFixed(1)}%
                           </dd>
                         </div>
+                        )}
                         <div>
                           <dt>Item ID</dt>
                           <dd>{alert.ebay_item_id}</dd>

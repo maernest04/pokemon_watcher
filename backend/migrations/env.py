@@ -11,7 +11,7 @@ import sys
 sys.path.append(os.getcwd())
 
 from database import Base
-from models import User, SearchQuery, SeenListing, Alert
+from models import User, SearchQuery, SeenListing, Alert, PriceCache
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

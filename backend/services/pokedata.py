@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import quote_plus, urljoin
 
-import httpx
 import requests
 from bs4 import BeautifulSoup
 
@@ -14,43 +13,9 @@ _USER_AGENTS = [
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Firefox/121.0",
 ]
 
-_MARKET_PATTERNS = [
-    re.compile(r"Market Price[:\s]*\$?\s*(\d(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)", re.I),
-    re.compile(r"\"marketPrice\"\s*:\s*([\d.]+)", re.I),
-    re.compile(r"\"MarketPrice\"\s*:\s*([\d.]+)", re.I),
-]
-
 
 def _pick_user_agent(card_query: str) -> str:
     return _USER_AGENTS[hash(card_query.strip()) % len(_USER_AGENTS)]
-
-
-def _extract_cards_from_soup(soup: BeautifulSoup) -> list[tuple[str, float | None]]:
-    cards: list[tuple[str, float | None]] = []
-    seen: set[str] = set()
-    card_containers = soup.find_all("div", class_=re.compile(r"MuiCard-root"))
-    for container in card_containers:
-        a = container.find("a", href=True)
-        if not a or "/card/" not in a["href"]:
-            continue
-        full_url = urljoin("https://www.pokedata.io", a["href"])
-        if full_url in seen:
-            continue
-        seen.add(full_url)
-        price: float | None = None
-        price_el = container.find("span", string=re.compile(r"\$"))
-        if not price_el:
-            price_el = container.find(lambda tag: tag.name == "span" and "$" in tag.get_text())
-        if price_el:
-            price_text = price_el.get_text(strip=True)
-            match = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d+)?)", price_text)
-            if match:
-                try:
-                    price = float(match.group(1).replace(",", ""))
-                except ValueError:
-                    pass
-        cards.append((full_url, price))
-    return cards
 
 
 def _playwright_fetch_html(url: str) -> tuple[str | None, str | None]:
