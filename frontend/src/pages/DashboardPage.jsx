@@ -1030,41 +1030,48 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
             ) : (
               <div className="alerts-list">
                 {paginatedAlerts.map((alert) => (
-                  <article key={alert.id} className="alert-card">
-                    <div className="search-card-header">
-                      <div>
-                        <h3>{alert.title}</h3>
-                        <p className="support-copy">{new Date(alert.sent_at).toLocaleString()}</p>
+                  <article key={alert.id} className="alert-card with-image">
+                    {alert.image_url && (
+                      <div className="alert-image-container">
+                        <img src={alert.image_url} alt={alert.title} />
                       </div>
-                      <a
-                        className="link-button"
-                        href={alert.listing_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View listing
-                      </a>
+                    )}
+                    <div className="alert-content">
+                      <div className="search-card-header">
+                        <div>
+                          <h3>{alert.title}</h3>
+                          <p className="support-copy">{new Date(alert.sent_at).toLocaleString()}</p>
+                        </div>
+                        <a
+                          className="link-button"
+                          href={alert.listing_url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          View listing
+                        </a>
+                      </div>
+                      <dl className="search-meta">
+                        <div>
+                          <dt>Listing price</dt>
+                          <dd>{formatMoney(alert.listing_price)}</dd>
+                        </div>
+                        <div>
+                          <dt>Market price</dt>
+                          <dd>{formatMoney(alert.market_price)}</dd>
+                        </div>
+                        <div>
+                          <dt>{(alert.pct_below_market || 0) > 0 ? 'Below market' : 'Above market'}</dt>
+                          <dd style={{ color: (alert.pct_below_market || 0) > 0 ? '#99f0b4' : '#ff8d8d' }}>
+                            {Math.abs(alert.pct_below_market * 100).toFixed(1)}%
+                          </dd>
+                        </div>
+                        <div>
+                          <dt>Item ID</dt>
+                          <dd>{alert.ebay_item_id}</dd>
+                        </div>
+                      </dl>
                     </div>
-                    <dl className="search-meta">
-                      <div>
-                        <dt>Listing price</dt>
-                        <dd>{formatMoney(alert.listing_price)}</dd>
-                      </div>
-                      <div>
-                        <dt>Market price</dt>
-                        <dd>{formatMoney(alert.market_price)}</dd>
-                      </div>
-                      <div>
-                        <dt>{(alert.pct_below_market || 0) > 0 ? 'Below market' : 'Above market'}</dt>
-                        <dd style={{ color: (alert.pct_below_market || 0) > 0 ? '#99f0b4' : '#ff8d8d' }}>
-                          {Math.abs(alert.pct_below_market * 100).toFixed(1)}%
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Item ID</dt>
-                        <dd>{alert.ebay_item_id}</dd>
-                      </div>
-                    </dl>
                   </article>
                 ))}
               </div>

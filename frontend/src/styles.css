@@ -291,6 +291,35 @@ select:focus {
   gap: 14px;
 }
 
+.alert-card.with-image {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.alert-image-container {
+  width: 140px;
+  height: 140px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.alert-image-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.alert-content {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+}
+
 .card-actions,
 .form-actions,
 .toggle-row {
