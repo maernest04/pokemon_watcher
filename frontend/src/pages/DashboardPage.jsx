@@ -24,11 +24,11 @@ const emptyForm = {
   set_name: "",
   card_number: "",
   grading_type: "both",
+  check_interval_mins: 5,
   listing_type: "buy_it_now",
   manual_market_price: "",
   min_price: "",
   max_price: "",
-  deal_threshold: "",
   is_active: true,
 }
 
@@ -39,13 +39,12 @@ function formFromSearch(search) {
     set_name: search.set_name || "",
     card_number: search.card_number || "",
     grading_type: search.grading_type || "both",
+    check_interval_mins: search.check_interval_mins || 5,
     listing_type: search.listing_type ?? "buy_it_now",
     manual_market_price:
       search.manual_market_price === null ? "" : String(search.manual_market_price),
     min_price: search.min_price === null ? "" : String(search.min_price),
     max_price: search.max_price === null ? "" : String(search.max_price),
-    deal_threshold:
-      search.deal_threshold === null ? "" : String(search.deal_threshold * 100),
     is_graded: Boolean(search.is_graded),
     is_active: Boolean(search.is_active),
   }
@@ -61,14 +60,12 @@ function normalizePayload(form) {
     set_name: setName || null,
     card_number: cardNumber || null,
     grading_type: form.grading_type,
+    check_interval_mins: Number(form.check_interval_mins) || 5,
     listing_type: form.listing_type,
     manual_market_price:
       form.manual_market_price === "" ? null : Number(form.manual_market_price),
     min_price: form.min_price === "" ? null : Number(form.min_price),
     max_price: form.max_price === "" ? null : Number(form.max_price),
-    deal_threshold:
-      form.deal_threshold === "" ? null : Number(form.deal_threshold) / 100,
-    is_graded: form.is_graded,
     is_active: form.is_active,
   }
 }
@@ -261,18 +258,6 @@ function SearchForm({
           />
         </label>
 
-        <label className="field">
-          <span>Deal threshold</span>
-          <input
-            name="deal_threshold"
-            type="number"
-            step="1"
-            min="0"
-            value={form.deal_threshold}
-            onChange={onChange}
-            placeholder="15"
-          />
-        </label>
 
         <label className="field">
           <span>Min price</span>
@@ -303,14 +288,6 @@ function SearchForm({
 
 
       <div className="toggle-row">
-        <label className="field">
-          <span>Grading</span>
-          <select name="grading_type" value={form.grading_type} onChange={onChange}>
-            <option value="both">Both</option>
-            <option value="ungraded">Ungraded only</option>
-            <option value="graded">Graded only</option>
-          </select>
-        </label>
 
         <label className="toggle-field">
           <input
@@ -320,6 +297,29 @@ function SearchForm({
             onChange={onChange}
           />
           <span>Active (polling eBay)</span>
+        </label>
+      </div>
+
+      <div className="toggle-row">
+        <label className="field">
+          <span>Grading</span>
+          <select name="grading_type" value={form.grading_type} onChange={onChange}>
+            <option value="both">Both</option>
+            <option value="ungraded">Ungraded only</option>
+            <option value="graded">Graded only</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Check every (mins)</span>
+          <input
+            name="check_interval_mins"
+            type="number"
+            min="1"
+            max="1440"
+            value={form.check_interval_mins}
+            onChange={onChange}
+          />
         </label>
       </div>
 
@@ -354,6 +354,8 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   const [alertsPage, setAlertsPage] = useState(1)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [discordChannelId, setDiscordChannelId] = useState(user.discord_channel_id || "")
+  const [ebayAppId, setEbayAppId] = useState(user.ebay_app_id || "")
+  const [ebayClientSecret, setEbayClientSecret] = useState("")
   const [pokedataQuery, setPokedataQuery] = useState("charizard 151 199/165")
   const [selectedTestSearchId, setSelectedTestSearchId] = useState("")
   const [testResults, setTestResults] = useState({
@@ -569,10 +571,16 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     setSettingsMessage("")
     setSettingsError("")
     try {
-      const updatedUser = await updateMe({
+      const payload = {
         discord_channel_id: discordChannelId.trim() || null,
-      })
+        ebay_app_id: ebayAppId.trim() || null,
+      }
+      if (ebayClientSecret.trim()) {
+        payload.ebay_client_secret = ebayClientSecret.trim()
+      }
+      const updatedUser = await updateMe(payload)
       onUserChange(updatedUser)
+      setEbayClientSecret("") // Clear input after save
       setSettingsMessage("Settings saved.")
     } catch (err) {
       setSettingsError(err instanceof Error ? err.message : "Could not save settings")
@@ -907,6 +915,29 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                         placeholder="123456789012345678"
                       />
                     </label>
+
+                    <div style={{ marginTop: "16px" }}>
+                      <p className="support-copy" style={{ marginBottom: "8px" }}>
+                        Personal eBay API (Optional)
+                      </p>
+                      <label className="field">
+                        <span>eBay App ID</span>
+                        <input
+                          value={ebayAppId}
+                          onChange={(event) => setEbayAppId(event.target.value)}
+                          placeholder="Your-App-ID"
+                        />
+                      </label>
+                      <label className="field" style={{ marginTop: "8px" }}>
+                        <span>eBay Client Secret {user.has_ebay_secret && "(Already set)"}</span>
+                        <input
+                          type="password"
+                          value={ebayClientSecret}
+                          onChange={(event) => setEbayClientSecret(event.target.value)}
+                          placeholder={user.has_ebay_secret ? "••••••••••••••••" : "Your-Client-Secret"}
+                        />
+                      </label>
+                    </div>
                     {settingsMessage ? <p className="form-success">{settingsMessage}</p> : null}
                     {settingsError ? <p className="form-error">{settingsError}</p> : null}
                     <div className="form-actions">
