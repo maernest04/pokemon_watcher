@@ -101,8 +101,11 @@ def _send_listing_alert(
         color = 0xF17373
 
     # Timezone conversion for Discord message
-    tz_name = os.environ.get("TZ", "America/Los_Angeles")
-    local_tz = pytz.timezone(tz_name)
+    tz_name = os.environ.get("TZ", "America/Los_Angeles").strip().lstrip(":")
+    try:
+        local_tz = pytz.timezone(tz_name)
+    except pytz.exceptions.UnknownTimeZoneError:
+        local_tz = pytz.UTC
     now_local = datetime.now(timezone.utc).astimezone(local_tz)
     time_str = now_local.strftime("%I:%M:%S %p")
 
@@ -305,8 +308,12 @@ async def refresh_market_prices_job() -> None:
 
 
 def create_scheduler() -> AsyncIOScheduler:
-    tz_name = os.environ.get("TZ", "America/Los_Angeles")
-    timezone_obj = pytz.timezone(tz_name)
+    tz_name = os.environ.get("TZ", "America/Los_Angeles").strip().lstrip(":")
+    try:
+        timezone_obj = pytz.timezone(tz_name)
+    except pytz.exceptions.UnknownTimeZoneError:
+        timezone_obj = pytz.UTC
+        logger.warning(f"Unknown timezone '{tz_name}', defaulting to UTC")
     scheduler = AsyncIOScheduler(timezone=timezone_obj)
     scheduler.add_job(
         poll_active_searches_job,
