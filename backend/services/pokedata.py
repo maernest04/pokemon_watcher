@@ -38,103 +38,93 @@ def _playwright_fetch_html(url: str) -> tuple[str | None, str | None]:
 
 def _extract_first_card_price_from_rendered_html(html: str) -> tuple[float | None, str | None]:
     soup = BeautifulSoup(html, "html.parser")
-    for a in soup.find_all("a", href=True):
-        href = a["href"]
-        if "/card/" not in href:
-            continue
-        card_url = urljoin("https://www.pokedata.io", href)
-        container = a.find_parent("div", class_=re.compile(r"MuiCard-root|MuiPaper-root"))
-        scope = container if container else a
-        price_el = scope.find(
-            lambda tag: tag.name == "span"
-            and tag.get("class")
-            and any("MuiTypography-avenir_16_700" in cls for cls in tag.get("class", []))
-            and "$" in tag.get_text(" ", strip=True)
-        )
-        if price_el:
-            m = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d+)?)", price_el.get_text(" ", strip=True))
-            if m:
-                try:
-                    return float(m.group(1).replace(",", "")), card_url
-                except ValueError:
-                    pass
-    return None, None
-
-
-def _browser_debug_capture(url: str) -> dict[str, Any]:
-    try:
-        from playwright.sync_api import sync_playwright
-    except Exception as exc:
-        return {"error": f"Playwright import failed: {exc}"}
-    out_dir = Path(__file__).resolve().parent.parent / "tmp"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
-    html_path = out_dir / f"pokedata-debug-{stamp}.html"
-    shot_path = out_dir / f"pokedata-debug-{stamp}.png"
-    try:
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=False)
-            page = browser.new_page()
-            page.goto(url, wait_until="networkidle", timeout=45000)
-            page.wait_for_timeout(4000)
-            html = page.content()
-            html_path.write_text(html)
-            page.screenshot(path=str(shot_path), full_page=True)
-            browser.close()
-    except Exception as exc:
-        return {"error": f"Playwright capture failed: {exc}"}
-    return {
-        "html_path": str(html_path),
-        "screenshot_path": str(shot_path),
-    }
+    # Try to find a card link first
+    card_link = soup.find("a", href=lambda x: x and "/card/" in x)
+    if not card_link:
+        return None, None
+    
+    card_url = urljoin("https://www.pokedata.io", card_link["href"])
+    
+    # Look for a container that might have the price
+    container = card_link.find_parent("div", class_=re.compile(r"MuiCard-root|MuiPaper-root"))
+    scope = container if container else soup
+    
+    # Search for text that looks like a price near a "Market" label
+    all_text = scope.get_text(" ", strip=True)
+    # Match something like "Market Price $123.45" or just "$123.45"
+    price_match = re.search(r"Market\s*(?:Price)?\s*\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)", all_text, re.IGNORECASE)
+    if not price_match:
+        # Fallback: just look for the first dollar amount in the scope
+        price_match = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)", all_text)
+        
+    if price_match:
+        try:
+            return float(price_match.group(1).replace(",", "")), card_url
+        except ValueError:
+            pass
+            
+    return None, card_url
 
 
 def scrape_market_price(card_query: str, *, debug_browser: bool = False) -> dict[str, Any]:
     cq = card_query.strip()
     if not cq:
         return {"market_price": None, "product_url": None, "error": "Empty query"}
+    
+    # Try to use a more direct search URL
     search_url = f"https://www.pokedata.io/cards?q={quote_plus(cq)}"
     headers = {
         "User-Agent": _pick_user_agent(cq),
-        "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
     }
+    
     debug: dict[str, Any] = {"pokedata_search_url": search_url}
-    if debug_browser:
-        debug["pokedata_browser"] = _browser_debug_capture(search_url)
+    
     try:
-        r = requests.get(search_url, headers=headers, timeout=30)
+        r = requests.get(search_url, headers=headers, timeout=15)
         r.raise_for_status()
-    except requests.RequestException as exc:
-        return {"market_price": None, "product_url": None, "error": f"Request failed: {exc}", "debug": debug}
-    soup = BeautifulSoup(r.text, "html.parser")
-    tbody = soup.find("tbody", class_=re.compile(r"MuiTableBody-root"))
-    if not tbody:
-        rendered_html, rendered_err = _playwright_fetch_html(search_url)
-        if rendered_html:
-            rendered_price, rendered_url = _extract_first_card_price_from_rendered_html(rendered_html)
-            if rendered_price is not None:
-                return {
-                    "market_price": rendered_price,
-                    "product_url": rendered_url or search_url,
-                    "error": None,
-                    "debug": debug,
-                }
-        if rendered_err:
-            debug["rendered_exception"] = rendered_err
-        return {"market_price": None, "product_url": search_url, "error": "No results found on pokedata.io", "debug": debug}
-    price_els = tbody.find_all(class_=re.compile(r"avenir_24_700"))
-    if len(price_els) < 2:
-        return {"market_price": None, "product_url": search_url, "error": "Could not find market price in results", "debug": debug}
-    market_raw = price_els[1].get_text(strip=True)
-    match = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d{1,2})?)", market_raw)
-    if not match:
-        return {"market_price": None, "product_url": search_url, "error": f"Could not parse price from: {market_raw}", "debug": debug}
-    try:
-        price = float(match.group(1).replace(",", ""))
-    except ValueError:
-        return {"market_price": None, "product_url": search_url, "error": f"Float conversion failed for: {market_raw}", "debug": debug}
-    return {"market_price": price, "product_url": search_url, "error": None, "debug": debug}
+        
+        # Check if the response contains actual card data or just a shell
+        if "MuiTable-root" in r.text or "avenir_24_700" in r.text:
+            soup = BeautifulSoup(r.text, "html.parser")
+            # Try to find market price by looking for cells/labels
+            price = None
+            
+            # Find all currency-looking text
+            all_text = soup.get_text(" ", strip=True)
+            # PokeData often lists Low, Market, High. Market is usually the middle one.
+            # But let's look for the specific "Market" label in table headers or cells
+            market_match = re.search(r"Market\s*(?:Price)?\s*\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)", all_text, re.IGNORECASE)
+            if market_match:
+                price = float(market_match.group(1).replace(",", ""))
+            
+            if price:
+                return {"market_price": price, "product_url": search_url, "error": None, "debug": debug}
+    except Exception as exc:
+        debug["requests_exception"] = str(exc)
+
+    # Fallback to Playwright if requests fails or doesn't find the price
+    rendered_html, rendered_err = _playwright_fetch_html(search_url)
+    if rendered_html:
+        rendered_price, rendered_url = _extract_first_card_price_from_rendered_html(rendered_html)
+        if rendered_price is not None:
+            return {
+                "market_price": rendered_price,
+                "product_url": rendered_url or search_url,
+                "error": None,
+                "debug": debug,
+            }
+    
+    if rendered_err:
+        debug["rendered_exception"] = rendered_err
+        
+    return {
+        "market_price": None, 
+        "product_url": search_url, 
+        "error": "Could not resolve market price from PokeDATA. Check if the query is specific enough.", 
+        "debug": debug
+    }
 
 
 def update_market_price_cache(card_query: str, db: Any) -> float | None:

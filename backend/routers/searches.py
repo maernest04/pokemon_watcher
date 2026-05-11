@@ -127,12 +127,14 @@ def create_search(
     db.add(sq)
     db.commit()
     db.refresh(sq)
-    from scheduler import get_cached_market_price
-    sq.market_price = get_cached_market_price(db, sq.query_string)
-
+    
     if sq.manual_market_price is None:
         from services.pokedata import update_market_price_cache
-        background_tasks.add_task(update_market_price_cache, sq.query_string, db)
+        update_market_price_cache(sq.query_string, db)
+        db.refresh(sq)
+
+    from scheduler import get_cached_market_price
+    sq.market_price = get_cached_market_price(db, sq.query_string)
 
     return sq
 

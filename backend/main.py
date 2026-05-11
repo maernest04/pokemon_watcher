@@ -19,12 +19,12 @@ from routers import users as users_router
 from scheduler import create_scheduler
 
 
+# Ensure tables are created (especially for Vercel functions)
+import models
+Base.metadata.create_all(bind=engine)
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import models
-
-    _ = models
-    Base.metadata.create_all(bind=engine)
     scheduler = create_scheduler()
     scheduler.start()
     yield

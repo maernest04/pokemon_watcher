@@ -34,10 +34,15 @@ async function request(path, options = {}) {
     ? await response.json()
     : await response.text()
   if (!response.ok) {
-    const detail =
-      typeof data === "object" && data !== null && "detail" in data
-        ? data.detail
-        : "Request failed"
+    let detail = "Request failed"
+    if (typeof data === "object" && data !== null && data.detail) {
+      if (Array.isArray(data.detail)) {
+        // Handle FastAPI validation errors (422)
+        detail = data.detail.map((err) => `${err.loc.join(".")}: ${err.msg}`).join(", ")
+      } else {
+        detail = data.detail
+      }
+    }
     throw new Error(detail)
   }
   return data
