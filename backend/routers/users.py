@@ -15,16 +15,24 @@ class UserMeResponse(BaseModel):
     id: int
     username: str
     discord_channel_id: str | None
+    ebay_app_id: str | None
+    has_ebay_secret: bool
     is_admin: bool
     is_approved: bool
 
 
 class MePatchBody(BaseModel):
     discord_channel_id: str | None = None
+    ebay_app_id: str | None = None
+    ebay_client_secret: str | None = None
 
 
 class ChangePasswordBody(BaseModel):
     current_password: str = Field(min_length=8, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
+class AdminChangePasswordBody(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
@@ -38,6 +46,8 @@ class AdminUserResponse(BaseModel):
 
 @router.get("/me", response_model=UserMeResponse)
 def read_me(user: User = Depends(get_current_user)):
+    # Add virtual field for response
+    user.has_ebay_secret = bool(user.ebay_client_secret)
     return user
 
 
@@ -47,12 +57,22 @@ def update_me(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
+    from services.encryption import encrypt_secret
+    
     data = body.model_dump(exclude_unset=True)
     if "discord_channel_id" in data:
         user.discord_channel_id = data["discord_channel_id"]
-        db.add(user)
-        db.commit()
-        db.refresh(user)
+    if "ebay_app_id" in data:
+        user.ebay_app_id = data["ebay_app_id"]
+    if "ebay_client_secret" in data:
+        # Encrypt the secret before saving
+        user.ebay_client_secret = encrypt_secret(data["ebay_client_secret"])
+        
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    
+    user.has_ebay_secret = bool(user.ebay_client_secret)
     return user
 
 
@@ -170,3 +190,24 @@ def admin_delete_user(
     db.delete(target)
     db.commit()
     return None
+
+
+@router.post("/admin/users/{target_id}/password", response_model=AdminUserResponse)
+def admin_change_password(
+    target_id: int,
+    body: AdminChangePasswordBody,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    target = db.get(User, target_id)
+    if not target:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    target.password_hash = hash_password(body.new_password)
+    db.add(target)
+    db.commit()
+    db.refresh(target)
+    return target
