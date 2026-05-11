@@ -14,13 +14,13 @@ from models import SearchQuery, User
 router = APIRouter(prefix="/api/searches", tags=["searches"])
 
 
-def _refresh_market_price_async(query_string: str) -> None:
+def _refresh_market_price_async(query_string: str, pokedata_url: str | None = None, search_query_id: str | None = None) -> None:
     from database import SessionLocal
     from services.pokedata import update_market_price_cache
 
     db = SessionLocal()
     try:
-        update_market_price_cache(query_string, db)
+        update_market_price_cache(query_string, db, override_url=pokedata_url, search_query_id=search_query_id)
     finally:
         db.close()
 
@@ -31,9 +31,10 @@ class SearchQueryCreate(BaseModel):
     set_name: str | None = Field(default=None, max_length=256)
     card_number: str | None = Field(default=None, max_length=128)
     grading_type: Literal["ungraded", "graded", "both"] = "both"
+    language: Literal["english", "japanese"] = "english"
     check_interval_mins: int = Field(default=5, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] = "buy_it_now"
-    manual_market_price: float | None = None
+    pokedata_url: str | None = None
     min_price: float | None = None
     max_price: float | None = None
     is_active: bool = True
@@ -55,9 +56,10 @@ class SearchQueryUpdate(BaseModel):
     set_name: str | None = Field(default=None, max_length=256)
     card_number: str | None = Field(default=None, max_length=128)
     grading_type: Literal["ungraded", "graded", "both"] | None = None
+    language: Literal["english", "japanese"] | None = None
     check_interval_mins: int | None = Field(default=None, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] | None = None
-    manual_market_price: float | None = None
+    pokedata_url: str | None = None
     min_price: float | None = None
     max_price: float | None = None
     is_active: bool | None = None
@@ -72,9 +74,10 @@ class SearchQueryResponse(BaseModel):
     set_name: str | None
     card_number: str | None
     grading_type: str
+    language: Literal["english", "japanese"]
     check_interval_mins: int
     listing_type: Literal["buy_it_now", "auction", "both"]
-    manual_market_price: float | None
+    pokedata_url: str | None
     min_price: float | None
     max_price: float | None
     is_active: bool
@@ -128,9 +131,10 @@ def create_search(
         set_name=body.set_name,
         card_number=body.card_number,
         grading_type=body.grading_type,
+        language=body.language,
         check_interval_mins=body.check_interval_mins,
         listing_type=body.listing_type,
-        manual_market_price=body.manual_market_price,
+        pokedata_url=body.pokedata_url,
         min_price=body.min_price,
         max_price=body.max_price,
         is_active=body.is_active,
@@ -139,8 +143,8 @@ def create_search(
     db.commit()
     db.refresh(sq)
 
-    if sq.manual_market_price is None:
-        background_tasks.add_task(_refresh_market_price_async, sq.query_string)
+    if sq.language == "english":
+        background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
 
     from scheduler import get_cached_market_price
     sq.market_price = get_cached_market_price(db, sq.query_string)
@@ -161,6 +165,7 @@ def get_search(
 def update_search(
     search_id: UUID,
     body: SearchQueryUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -180,6 +185,10 @@ def update_search(
     db.add(sq)
     db.commit()
     db.refresh(sq)
+
+    # If the user updated the pokedata_url, trigger an immediate refresh
+    if body.pokedata_url and sq.language == "english":
+        background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
     from scheduler import get_cached_market_price
     sq.market_price = get_cached_market_price(db, sq.query_string)
     return sq
@@ -192,9 +201,10 @@ def refresh_market_price(
     user: User = Depends(get_current_user),
 ):
     sq = _get_owned_search(db, user, search_id)
-    from services.pokedata import update_market_price_cache
-    update_market_price_cache(sq.query_string, db)
-    db.refresh(sq)
+    if sq.language == "english":
+        from services.pokedata import update_market_price_cache
+        update_market_price_cache(sq.query_string, db, override_url=sq.pokedata_url, search_query_id=str(sq.id))
+        db.refresh(sq)
     from scheduler import get_cached_market_price
     sq.market_price = get_cached_market_price(db, sq.query_string)
     return sq
