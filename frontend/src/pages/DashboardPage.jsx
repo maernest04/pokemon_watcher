@@ -25,9 +25,10 @@ const emptyForm = {
   set_name: "",
   card_number: "",
   grading_type: "both",
+  language: "english",
   check_interval_mins: 5,
   listing_type: "buy_it_now",
-  manual_market_price: "",
+  pokedata_url: "",
   min_price: "",
   max_price: "",
   is_active: true,
@@ -40,10 +41,10 @@ function formFromSearch(search) {
     set_name: search.set_name || "",
     card_number: search.card_number || "",
     grading_type: search.grading_type || "both",
+    language: search.language || "english",
     check_interval_mins: search.check_interval_mins || 5,
     listing_type: search.listing_type ?? "buy_it_now",
-    manual_market_price:
-      search.manual_market_price === null ? "" : String(search.manual_market_price),
+    pokedata_url: search.pokedata_url || "",
     min_price: search.min_price === null ? "" : String(search.min_price),
     max_price: search.max_price === null ? "" : String(search.max_price),
     is_active: Boolean(search.is_active),
@@ -60,10 +61,10 @@ function normalizePayload(form) {
     set_name: setName || null,
     card_number: cardNumber || null,
     grading_type: form.grading_type,
+    language: form.language || "english",
     check_interval_mins: Number(form.check_interval_mins) || 5,
     listing_type: form.listing_type,
-    manual_market_price:
-      form.manual_market_price === "" ? null : Number(form.manual_market_price),
+    pokedata_url: form.pokedata_url.trim() || null,
     min_price: form.min_price === "" ? null : Number(form.min_price),
     max_price: form.max_price === "" ? null : Number(form.max_price),
     is_active: form.is_active,
@@ -86,6 +87,13 @@ function formatListingType(value) {
     return "Both"
   }
   return "Buy It Now"
+}
+
+function formatLanguage(value) {
+  if (value === "japanese") {
+    return "Japanese"
+  }
+  return "English"
 }
 
 function ResultBadge({ success }) {
@@ -238,15 +246,12 @@ function SearchForm({
         </label>
 
         <label className="field">
-          <span>Manual market price</span>
+          <span>PokeDATA URL override</span>
           <input
-            name="manual_market_price"
-            type="number"
-            step="0.01"
-            min="0"
-            value={form.manual_market_price}
+            name="pokedata_url"
+            value={form.pokedata_url}
             onChange={onChange}
-            placeholder="200"
+            placeholder="https://www.pokedata.io/card/..."
           />
         </label>
 
@@ -283,6 +288,14 @@ function SearchForm({
             <option value="both">Both</option>
             <option value="ungraded">Ungraded only</option>
             <option value="graded">Graded only</option>
+          </select>
+        </label>
+
+        <label className="field">
+          <span>Language</span>
+          <select name="language" value={form.language || "english"} onChange={onChange}>
+            <option value="english">English</option>
+            <option value="japanese">Japanese</option>
           </select>
         </label>
 
@@ -337,6 +350,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   const [createForm, setCreateForm] = useState(emptyForm)
   const [editingId, setEditingId] = useState(null)
   const [editForm, setEditForm] = useState(emptyForm)
+  const [pollingIds, setPollingIds] = useState(new Set())
   const [view, setView] = useState("dashboard")
   const [adminUsers, setAdminUsers] = useState([])
   const [currentPage, setCurrentPage] = useState(1)
@@ -479,18 +493,31 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   }
 
   async function pollForMarketPrice(searchId) {
-    for (let i = 0; i < 10; i++) {
-      await new Promise((r) => setTimeout(r, 2000))
-      try {
-        const list = await listSearches()
-        const updated = list.find((s) => s.id === searchId)
-        if (updated && updated.market_price !== null && updated.market_price !== undefined) {
-          setSearches(list)
-          return
+    setPollingIds((prev) => new Set([...prev, searchId]))
+    try {
+      for (let i = 0; i < 15; i++) {
+        await new Promise((r) => setTimeout(r, 2000))
+        try {
+          const list = await listSearches()
+          const updated = list.find((s) => s.id === searchId)
+          if (updated) {
+            const hasPrice = updated.market_price !== null && updated.market_price !== undefined;
+            const urlRemoved = !updated.pokedata_url;
+            if (hasPrice) {
+              setSearches(list)
+              return
+            }
+          }
+        } catch {
+          // ignore error and continue polling
         }
-      } catch {
-        return
       }
+    } finally {
+      setPollingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(searchId)
+        return next
+      })
     }
   }
 
@@ -506,9 +533,15 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
       setSelectedTestSearchId((current) => current || created.id)
       setCreateForm(emptyForm)
       const needsPrice =
-        created.manual_market_price === null &&
-        (created.market_price === null || created.market_price === undefined)
-      setMessage(needsPrice ? "Search created. Fetching market price..." : "Search created.")
+        created.language === "english" &&
+        ((created.market_price === null || created.market_price === undefined) || created.pokedata_url)
+      setMessage(
+        needsPrice
+          ? "Search created. Fetching market price..."
+          : created.language === "japanese"
+            ? "Search created. PokeData market price is for English only."
+            : "Search created."
+      )
       if (needsPrice) {
         pollForMarketPrice(created.id)
       }
@@ -540,13 +573,18 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     setError("")
     setMessage("")
     try {
-      const updated = await updateSearch(editingId, normalizePayload(editForm))
+      const payload = normalizePayload(editForm)
+      const updated = await updateSearch(editingId, payload)
       setSearches((current) =>
         current.map((search) => (search.id === editingId ? updated : search)),
       )
       setEditingId(null)
       setEditForm(emptyForm)
-      setMessage("Search updated.")
+      const needsPrice = payload.pokedata_url && updated.language === "english"
+      setMessage(needsPrice ? "Search updated. Fetching new market price..." : "Search updated.")
+      if (needsPrice) {
+        pollForMarketPrice(updated.id)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update search")
     } finally {
@@ -669,9 +707,12 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
 
   async function handleRefreshMarket(searchId) {
     setSaving(true)
+    setError("")
+    setMessage("")
     try {
       await refreshMarketPrice(searchId)
-      await loadSearches()
+      setMessage("Market price refresh triggered...")
+      pollForMarketPrice(searchId)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to refresh market price")
     } finally {
@@ -811,10 +852,20 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                       <div className="search-row">
                         <div className="search-row-main">
                           <h3>{search.pokemon_name ? `${search.pokemon_name}${search.set_name ? ' - ' + search.set_name : ''}${search.card_number ? ' - ' + search.card_number : ''}` : search.query_string}</h3>
-                          {search.market_price !== null && search.market_price !== undefined && (
-                            <p className="support-copy" style={{ marginTop: '2px', fontSize: '0.9rem' }}>
-                              Market price: <strong>{formatMoney(search.market_price)}</strong>
-                            </p>
+                          <p className="support-copy" style={{ marginTop: '2px', fontSize: '0.85rem', opacity: 0.85 }}>
+                            Language: {formatLanguage(search.language)}
+                          </p>
+                          {pollingIds.has(search.id) ? (
+                            <div className="support-copy" style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent-color)', fontWeight: 500 }}>
+                              <div className="spinner-small" />
+                              Fetching latest market price...
+                            </div>
+                          ) : (
+                            search.market_price !== null && search.market_price !== undefined && (
+                              <p className="support-copy" style={{ marginTop: '2px', fontSize: '0.9rem' }}>
+                                Market price: <strong>{formatMoney(search.market_price)}</strong>
+                              </p>
+                            )
                           )}
                         </div>
                         <div className="card-actions">
@@ -822,7 +873,8 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                             type="button"
                             className="secondary-button"
                             onClick={() => handleRefreshMarket(search.id)}
-                            disabled={saving}
+                            disabled={saving || search.language === "japanese"}
+                            title={search.language === "japanese" ? "PokeData market prices apply to English listings only." : undefined}
                           >
                             Refresh Price
                           </button>
