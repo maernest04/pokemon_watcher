@@ -478,6 +478,22 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     }
   }
 
+  async function pollForMarketPrice(searchId) {
+    for (let i = 0; i < 10; i++) {
+      await new Promise((r) => setTimeout(r, 2000))
+      try {
+        const list = await listSearches()
+        const updated = list.find((s) => s.id === searchId)
+        if (updated && updated.market_price !== null && updated.market_price !== undefined) {
+          setSearches(list)
+          return
+        }
+      } catch {
+        return
+      }
+    }
+  }
+
   async function handleCreate(event) {
     event.preventDefault()
     setSaving(true)
@@ -489,7 +505,13 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
       setCurrentPage(1)
       setSelectedTestSearchId((current) => current || created.id)
       setCreateForm(emptyForm)
-      setMessage("Search created.")
+      const needsPrice =
+        created.manual_market_price === null &&
+        (created.market_price === null || created.market_price === undefined)
+      setMessage(needsPrice ? "Search created. Fetching market price..." : "Search created.")
+      if (needsPrice) {
+        pollForMarketPrice(created.id)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create search")
     } finally {

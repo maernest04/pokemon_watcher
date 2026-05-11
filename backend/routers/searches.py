@@ -14,6 +14,17 @@ from models import SearchQuery, User
 router = APIRouter(prefix="/api/searches", tags=["searches"])
 
 
+def _refresh_market_price_async(query_string: str) -> None:
+    from database import SessionLocal
+    from services.pokedata import update_market_price_cache
+
+    db = SessionLocal()
+    try:
+        update_market_price_cache(query_string, db)
+    finally:
+        db.close()
+
+
 class SearchQueryCreate(BaseModel):
     query_string: str = Field(min_length=1, max_length=512)
     pokemon_name: str | None = Field(default=None, max_length=256)
@@ -127,11 +138,9 @@ def create_search(
     db.add(sq)
     db.commit()
     db.refresh(sq)
-    
+
     if sq.manual_market_price is None:
-        from services.pokedata import update_market_price_cache
-        update_market_price_cache(sq.query_string, db)
-        db.refresh(sq)
+        background_tasks.add_task(_refresh_market_price_async, sq.query_string)
 
     from scheduler import get_cached_market_price
     sq.market_price = get_cached_market_price(db, sq.query_string)
