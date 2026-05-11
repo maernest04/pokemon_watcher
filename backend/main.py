@@ -25,10 +25,15 @@ Base.metadata.create_all(bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    scheduler = create_scheduler()
-    scheduler.start()
-    yield
-    scheduler.shutdown()
+    # Only start scheduler if we are NOT on Vercel
+    # Vercel kills background processes, so starting it there causes crashes
+    if not os.environ.get("VERCEL"):
+        scheduler = create_scheduler()
+        scheduler.start()
+        yield
+        scheduler.shutdown()
+    else:
+        yield
 
 
 app = FastAPI(lifespan=lifespan)

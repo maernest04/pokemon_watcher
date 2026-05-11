@@ -1,4 +1,3 @@
-import os
 import base64
 import time
 from typing import Any
@@ -9,13 +8,9 @@ from models import SearchQuery
 # Simple cache for OAuth tokens keyed by (app_id, cert_id)
 _token_cache = {}
 
-def _get_oauth_token(app_id: str | None = None, cert_id: str | None = None) -> str:
-    # Use system env if not provided
-    app_id = app_id or os.environ.get("EBAY_APP_ID")
-    cert_id = cert_id or os.environ.get("EBAY_CLIENT_SECRET")
-    
+def _get_oauth_token(app_id: str, cert_id: str) -> str:
     if not app_id or not cert_id:
-        raise RuntimeError("eBay credentials (EBAY_APP_ID/EBAY_CLIENT_SECRET) not configured")
+        raise RuntimeError("eBay credentials are not set. Add your eBay App ID and Client Secret in Settings.")
 
     cache_key = (app_id, cert_id)
     now = time.time()
@@ -59,15 +54,13 @@ def _to_float(value: Any) -> float | None:
         return None
 
 def search_listings(
-    search_query: SearchQuery, 
-    app_id: str | None = None, 
-    cert_id: str | None = None
+    search_query: SearchQuery,
+    app_id: str,
+    cert_id: str,
 ) -> list[dict[str, Any]]:
     token = _get_oauth_token(app_id, cert_id)
-    
-    # Use providing app_id or system one for base_url check
-    effective_app_id = app_id or os.environ.get("EBAY_APP_ID", "")
-    is_sandbox = "SBX" in effective_app_id
+
+    is_sandbox = "SBX" in app_id
     base_url = "https://api.sandbox.ebay.com/buy/browse/v1/item_summary/search" if is_sandbox else "https://api.ebay.com/buy/browse/v1/item_summary/search"
     
     # Construct query from pokemon_name, set_name, and card_number

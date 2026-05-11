@@ -84,8 +84,22 @@ def test_ebay(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Search query not found",
         )
+    if not user.ebay_app_id or not user.ebay_client_secret:
+        return {
+            "success": False,
+            "message": "Set your eBay App ID and Client Secret in Settings first.",
+            "data": [],
+        }
+    from services.encryption import decrypt_secret
+    cert_id = decrypt_secret(user.ebay_client_secret)
+    if not cert_id:
+        return {
+            "success": False,
+            "message": "Could not decrypt your stored eBay Client Secret. Re-save it in Settings.",
+            "data": [],
+        }
     try:
-        listings = search_listings(search_query)
+        listings = search_listings(search_query, app_id=user.ebay_app_id, cert_id=cert_id)
     except RuntimeError as exc:
         return {"success": False, "message": str(exc), "data": []}
     return {
