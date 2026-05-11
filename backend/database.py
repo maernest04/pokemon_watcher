@@ -5,6 +5,10 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./dealfinder.db")
 
+# SQLAlchemy 2.0 requires "postgresql://" instead of "postgres://"
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
 _connect_args = {}
 if DATABASE_URL.startswith("sqlite"):
     _connect_args["check_same_thread"] = False
