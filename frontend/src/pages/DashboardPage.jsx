@@ -1201,7 +1201,9 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                       <div className="search-card-header">
                         <div>
                           <h3>{alert.title}</h3>
-                          <p className="support-copy">{new Date(alert.sent_at).toLocaleString()}</p>
+                          <p className="support-copy">
+                            {new Date(alert.sent_at.endsWith('Z') ? alert.sent_at : alert.sent_at + 'Z').toLocaleString()}
+                          </p>
                         </div>
                         <a
                           className="link-button"
