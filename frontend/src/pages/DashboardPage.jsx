@@ -32,6 +32,7 @@ const emptyForm = {
   manual_market_price: "",
   min_price: "",
   max_price: "",
+  hide_above_market: false,
   is_active: true,
 }
 
@@ -49,6 +50,7 @@ function formFromSearch(search) {
     manual_market_price: search.manual_market_price === null ? "" : String(search.manual_market_price),
     min_price: search.min_price === null ? "" : String(search.min_price),
     max_price: search.max_price === null ? "" : String(search.max_price),
+    hide_above_market: Boolean(search.hide_above_market),
     is_active: Boolean(search.is_active),
   }
 }
@@ -70,6 +72,7 @@ function normalizePayload(form) {
     manual_market_price: form.manual_market_price === "" ? null : Number(form.manual_market_price),
     min_price: form.min_price === "" ? null : Number(form.min_price),
     max_price: form.max_price === "" ? null : Number(form.max_price),
+    hide_above_market: form.hide_above_market,
     is_active: form.is_active,
   }
 }
@@ -326,6 +329,19 @@ function SearchForm({
             onChange={onChange}
           />
         </label>
+
+        <div className="field">
+          <span>Market Price Filter</span>
+          <label className="toggle-field" style={{ height: '46px' }}>
+            <input
+              name="hide_above_market"
+              type="checkbox"
+              checked={form.hide_above_market}
+              onChange={onChange}
+            />
+            <span>Hide above market price</span>
+          </label>
+        </div>
 
         <div className="field">
           <span>Search Status</span>
@@ -882,6 +898,11 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                                 Market price: <strong>{formatMoney(search.market_price)}</strong>
                               </p>
                             )
+                          )}
+                          {search.hide_above_market && (
+                            <p className="support-copy" style={{ marginTop: '2px', fontSize: '0.85rem', color: 'var(--accent-color)' }}>
+                              Filtering out listings above market price
+                            </p>
                           )}
                         </div>
                         <div className="card-actions">

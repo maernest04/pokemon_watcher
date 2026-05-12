@@ -38,6 +38,7 @@ class SearchQueryCreate(BaseModel):
     manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
+    hide_above_market: bool = False
     is_active: bool = True
 
     @model_validator(mode="after")
@@ -64,6 +65,7 @@ class SearchQueryUpdate(BaseModel):
     manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
+    hide_above_market: bool | None = None
     is_active: bool | None = None
 
 
@@ -83,6 +85,7 @@ class SearchQueryResponse(BaseModel):
     manual_market_price: float | None
     min_price: float | None
     max_price: float | None
+    hide_above_market: bool
     is_active: bool
     created_at: datetime
     market_price: float | None = None
@@ -144,6 +147,7 @@ def create_search(
         manual_market_price=body.manual_market_price,
         min_price=body.min_price,
         max_price=body.max_price,
+        hide_above_market=body.hide_above_market,
         is_active=body.is_active,
     )
     db.add(sq)

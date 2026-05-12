@@ -52,7 +52,7 @@ def test_pokedata(
     body: PokeDataTestBody,
     _: User = Depends(get_current_user),
 ) -> dict[str, Any]:
-    data = scrape_market_price(body.query, debug_browser=body.debug_browser)
+    data = scrape_market_price(body.query)
     if data.get("error"):
         return {
             "success": False,

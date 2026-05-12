@@ -40,7 +40,7 @@ def _resolve_market_price(search_query: SearchQuery, db) -> float | None:
 def _should_send_alert(
     listing: dict,
     market_price: float | None,
-    deal_threshold: float | None,
+    search_query: SearchQuery,
 ) -> tuple[bool, float | None]:
     # Ignore listings older than 60 minutes to prevent initial spam
     raw_date = listing.get("created_at_raw")
@@ -65,6 +65,9 @@ def _should_send_alert(
         return False, None
     pct_below_market = (market_price - listing_price) / market_price
     
+    if search_query.hide_above_market and pct_below_market < 0:
+        return False, pct_below_market
+
     # We no longer filter by deal_threshold. 
     # We only filter out suspiciously low prices (spam/scams).
     if pct_below_market is not None and pct_below_market > 0.4:
@@ -196,7 +199,7 @@ def poll_search_query(search_query_id: str) -> None:
             should_send, pct_below_market = _should_send_alert(
                 listing,
                 market_price,
-                search_query.deal_threshold,
+                search_query,
             )
             
             if not should_send:

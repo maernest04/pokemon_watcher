@@ -1,4 +1,5 @@
 import base64
+import re
 import time
 from typing import Any
 import requests
@@ -91,6 +92,7 @@ def search_listings(
         aspects.append("Graded:{Yes}")
     elif grading == "ungraded":
         aspects.append("Graded:{No}")
+        params["q"] = str(params.get("q", "")) + " -psa -bgs -cgc -sgc -graded"
 
     language = getattr(search_query, "language", "english")
     if language == "japanese":
@@ -141,6 +143,12 @@ def search_listings(
     
     listings = []
     for item in items:
+        title = item.get("title", "").lower()
+        if grading == "ungraded":
+            # Match whole words to prevent matching Pokemon names like "Capsakid"
+            if re.search(r'\b(psa|bgs|cgc|sgc|graded)\b', title):
+                continue
+
         # Determine normalized type
         options = item.get("buyingOptions", [])
         if "AUCTION" in options:

@@ -46,6 +46,7 @@ class SearchQuery(Base):
     manual_market_price: Mapped[float | None] = mapped_column(nullable=True)
     min_price: Mapped[float | None] = mapped_column(nullable=True)
     max_price: Mapped[float | None] = mapped_column(nullable=True)
+    hide_above_market: Mapped[bool] = mapped_column(default=False)
     deal_threshold: Mapped[float | None] = mapped_column(nullable=True)
     check_interval_mins: Mapped[int] = mapped_column(default=5)
     last_polled_at: Mapped[datetime | None] = mapped_column(nullable=True)
