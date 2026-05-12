@@ -17,7 +17,9 @@ import {
   adminDeleteUser,
   adminToggleSearch,
   adminDeleteSearch,
+  adminChangePassword,
 } from "../api"
+
 
 const SEARCHES_PER_PAGE = 5
 const ALERTS_PER_PAGE = 5
@@ -408,7 +410,9 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   const [testingAction, setTestingAction] = useState("")
   const [message, setMessage] = useState("")
   const [error, setError] = useState("")
+  const [showEbaySecret, setShowEbaySecret] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState("")
+
   const [settingsError, setSettingsError] = useState("")
 
   const editingSearch = useMemo(
@@ -535,6 +539,22 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
       alert(err instanceof Error ? err.message : "Failed to delete search")
     }
   }
+
+  async function handleAdminResetPassword(userId) {
+    const newPassword = window.prompt("Enter new password for this user (min 8 chars):")
+    if (!newPassword) return
+    if (newPassword.length < 8) {
+      alert("Password must be at least 8 characters.")
+      return
+    }
+    try {
+      await adminChangePassword(userId, { new_password: newPassword })
+      alert("Password reset successfully.")
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to reset password")
+    }
+  }
+
 
   function toggleAdminUserExpand(userId) {
     setExpandedAdminUserIds((prev) => {
@@ -866,11 +886,19 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                         </button>
                         <button
                           type="button"
+                          className="secondary-button"
+                          onClick={() => handleAdminResetPassword(u.id)}
+                        >
+                          Reset Password
+                        </button>
+                        <button
+                          type="button"
                           className="danger-button"
                           onClick={() => handleAdminDelete(u.id)}
                         >
                           Delete
                         </button>
+
                       </>
                     )}
                   </div>
@@ -1092,13 +1120,24 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
                       </label>
                       <label className="field">
                         <span>eBay Client Secret {user.has_ebay_secret && "(Already set)"}</span>
-                        <input
-                          type="password"
-                          value={ebayClientSecret}
-                          onChange={(event) => setEbayClientSecret(event.target.value)}
-                          placeholder={user.has_ebay_secret ? "••••••••••••••••" : "Your-Client-Secret"}
-                        />
+                        <div className="password-input-container">
+                          <input
+                            type={showEbaySecret ? "text" : "password"}
+                            value={ebayClientSecret}
+                            onChange={(event) => setEbayClientSecret(event.target.value)}
+                            placeholder={user.has_ebay_secret ? "••••••••••••••••" : "Your-Client-Secret"}
+                          />
+                          <button
+                            type="button"
+                            className="password-toggle-button"
+                            onClick={() => setShowEbaySecret(!showEbaySecret)}
+                            title={showEbaySecret ? "Hide secret" : "Show secret"}
+                          >
+                            {showEbaySecret ? "🙈" : "👁️"}
+                          </button>
+                        </div>
                       </label>
+
                     </div>
                     {settingsMessage ? <p className="form-success">{settingsMessage}</p> : null}
                     {settingsError ? <p className="form-error">{settingsError}</p> : null}

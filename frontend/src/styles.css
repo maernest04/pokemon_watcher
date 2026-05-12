@@ -786,3 +786,37 @@ select:focus {
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+.password-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.password-input-container input {
+  padding-right: 44px;
+}
+
+.password-toggle-button {
+  position: absolute;
+  right: 6px;
+  background: transparent;
+  color: rgba(246, 247, 251, 0.5);
+  padding: 6px;
+  border-radius: 6px;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  line-height: 1;
+  height: 32px;
+  width: 36px;
+}
+
+.password-toggle-button:hover {
+  color: #f6f7fb;
+  background: rgba(255, 255, 255, 0.08);
+}
+

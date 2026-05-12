@@ -3,6 +3,7 @@ import { useState } from "react"
 const initialForm = {
   username: "",
   password: "",
+  confirmPassword: "",
 }
 
 export default function AuthPage({ onAuthenticated }) {
@@ -11,14 +12,24 @@ export default function AuthPage({ onAuthenticated }) {
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
   const [busy, setBusy] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
 
   async function handleSubmit(event) {
     event.preventDefault()
     setBusy(true)
     setError("")
+
+    if (mode === "signup" && form.password !== form.confirmPassword) {
+      setError("Passwords do not match")
+      setBusy(false)
+      return
+    }
+
     try {
-      const result = await onAuthenticated(mode, form)
+      const { username, password } = form
+      const result = await onAuthenticated(mode, { username, password })
       if (result && result.message) {
+
         setMessage(result.message)
         setForm(initialForm)
       } else {
@@ -86,23 +97,58 @@ export default function AuthPage({ onAuthenticated }) {
           </label>
           <label>
             <span>Password</span>
-            <input
-              name="password"
-              type="password"
-              value={form.password}
-              onChange={updateField}
-              autoComplete={
-                mode === "login" ? "current-password" : "new-password"
-              }
-              required
-            />
+            <div className="password-input-container">
+              <input
+                name="password"
+                type={showPassword ? "text" : "password"}
+                value={form.password}
+                onChange={updateField}
+                autoComplete={
+                  mode === "login" ? "current-password" : "new-password"
+                }
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle-button"
+                onClick={() => setShowPassword(!showPassword)}
+                title={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? "🙈" : "👁️"}
+              </button>
+            </div>
           </label>
+          {mode === "signup" && (
+            <label>
+              <span>Confirm Password</span>
+              <div className="password-input-container">
+                <input
+                  name="confirmPassword"
+                  type={showPassword ? "text" : "password"}
+                  value={form.confirmPassword}
+                  onChange={updateField}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle-button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  title={showPassword ? "Hide password" : "Show password"}
+                >
+                  {showPassword ? "🙈" : "👁️"}
+                </button>
+              </div>
+            </label>
+          )}
+
           {error ? <p className="form-error">{error}</p> : null}
           {message ? <p className="form-success">{message}</p> : null}
           <button type="submit" disabled={busy}>
             {busy ? "Working..." : mode === "login" ? "Login" : "Create account"}
           </button>
         </form>
+
       </section>
     </main>
   )

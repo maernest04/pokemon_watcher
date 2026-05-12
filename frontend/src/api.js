@@ -165,3 +165,11 @@ export function adminDeleteSearch(userId, searchId) {
     method: "DELETE",
   })
 }
+
+export function adminChangePassword(userId, payload) {
+  return request(`/api/users/admin/users/${userId}/password`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  })
+}
+
