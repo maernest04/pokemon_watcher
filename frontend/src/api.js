@@ -153,3 +153,15 @@ export function adminDeleteUser(userId) {
     method: "DELETE",
   })
 }
+
+export function adminToggleSearch(userId, searchId) {
+  return request(`/api/users/admin/users/${userId}/searches/${searchId}/toggle`, {
+    method: "POST",
+  })
+}
+
+export function adminDeleteSearch(userId, searchId) {
+  return request(`/api/users/admin/users/${userId}/searches/${searchId}`, {
+    method: "DELETE",
+  })
+}

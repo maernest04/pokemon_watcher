@@ -36,12 +36,19 @@ class AdminChangePasswordBody(BaseModel):
     new_password: str = Field(min_length=8, max_length=128)
 
 
+class AdminUserSearchQuery(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    query_string: str
+    is_active: bool
+
 class AdminUserResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
     username: str
     is_approved: bool
     is_admin: bool
+    search_queries: list[AdminUserSearchQuery] = Field(default_factory=list)
 
 
 @router.get("/me", response_model=UserMeResponse)
@@ -102,7 +109,12 @@ def admin_list_users(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
     
     from sqlalchemy import select
-    return db.scalars(select(User).order_by(User.created_at.desc())).all()
+    from sqlalchemy.orm import selectinload
+    return db.scalars(
+        select(User)
+        .options(selectinload(User.search_queries))
+        .order_by(User.created_at.desc())
+    ).all()
 
 
 @router.post("/admin/users/{target_id}/approve", response_model=AdminUserResponse)
@@ -211,3 +223,45 @@ def admin_change_password(
     db.commit()
     db.refresh(target)
     return target
+
+
+@router.post("/admin/users/{target_id}/searches/{search_id}/toggle", response_model=AdminUserSearchQuery)
+def admin_toggle_search(
+    target_id: int,
+    search_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    from models import SearchQuery
+    sq = db.get(SearchQuery, search_id)
+    if not sq or sq.user_id != target_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Search not found for this user")
+    
+    sq.is_active = not sq.is_active
+    db.add(sq)
+    db.commit()
+    db.refresh(sq)
+    return sq
+
+
+@router.delete("/admin/users/{target_id}/searches/{search_id}", status_code=status.HTTP_204_NO_CONTENT)
+def admin_delete_search(
+    target_id: int,
+    search_id: str,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    if not user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    
+    from models import SearchQuery
+    sq = db.get(SearchQuery, search_id)
+    if not sq or sq.user_id != target_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Search not found for this user")
+    
+    db.delete(sq)
+    db.commit()
+    return None
