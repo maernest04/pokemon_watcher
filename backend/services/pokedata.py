@@ -46,24 +46,41 @@ def _extract_first_card_price_from_rendered_html(html: str) -> tuple[float | Non
     card_url = urljoin("https://www.pokedata.io", card_link["href"]) if card_link else None
 
     # STRATEGY 1: Look for TCGPlayer specifically (High Priority)
-    # Search for "TCGPlayer" or "TCG Player"
-    tcg_labels = body.find_all(string=re.compile(r"TCG\s*Player", re.IGNORECASE))
-    for label in tcg_labels:
-        # Traverse up to find a container and look for a price near this label
-        curr = label.parent
-        for _ in range(5): # Check up to 5 levels up
+    # Search for "TCGPlayer" or "TCG Player" text, OR an image with TCGPlayer in src/alt
+    tcg_elements = []
+    
+    # 1a. Find text nodes
+    for label in body.find_all(string=re.compile(r"TCG\s*Player", re.IGNORECASE)):
+        tcg_elements.append(label.parent)
+        
+    # 1b. Find images
+    for img in body.find_all("img"):
+        alt = img.get("alt", "").lower()
+        src = img.get("src", "").lower()
+        if "tcgplayer" in alt or "tcgplayer" in src or "tcg player" in alt:
+            tcg_elements.append(img)
+            
+    for elem in tcg_elements:
+        # Traverse up to find a container and look for a price near this element
+        curr = elem.parent
+        for _ in range(8): # Check up to 8 levels up (increased from 5 for complex layouts)
             if not curr: break
-            price_span = curr.find("span", class_=re.compile(r"avenir_24_700|mui-style-1i0sqsh"))
-            if price_span and "$" in price_span.get_text():
-                try:
-                    val = price_span.get_text().strip().replace("$", "").replace(",", "")
-                    return float(val), card_url
-                except ValueError:
-                    pass
+            
+            # Look for the specific price span class the user mentioned
+            price_spans = curr.find_all("span", class_=re.compile(r"avenir_24_700|mui-style-1i0sqsh"))
+            for price_span in price_spans:
+                if "$" in price_span.get_text():
+                    try:
+                        val = price_span.get_text().strip().replace("$", "").replace(",", "")
+                        return float(val), card_url
+                    except ValueError:
+                        pass
+            
             # Fallback within this container: any dollar amount
             price_match = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)", curr.get_text())
             if price_match:
                 return float(price_match.group(1).replace(",", "")), card_url
+                
             curr = curr.parent
 
     # STRATEGY 2: Direct price span check (main price on page)

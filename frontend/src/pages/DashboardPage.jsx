@@ -771,14 +771,18 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   async function handleRefreshMarket(searchId) {
     setSaving(true)
     setError("")
-    setMessage("")
+    setPollingIds((prev) => new Set([...prev, searchId]))
     try {
       await refreshMarketPrice(searchId)
-      setMessage("Market price refresh triggered...")
-      pollForMarketPrice(searchId)
+      await loadSearches()
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to refresh market price")
     } finally {
+      setPollingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(searchId)
+        return next
+      })
       setSaving(false)
     }
   }
