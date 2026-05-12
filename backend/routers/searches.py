@@ -35,6 +35,7 @@ class SearchQueryCreate(BaseModel):
     check_interval_mins: int = Field(default=5, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] = "buy_it_now"
     pokedata_url: str | None = None
+    manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
     is_active: bool = True
@@ -60,6 +61,7 @@ class SearchQueryUpdate(BaseModel):
     check_interval_mins: int | None = Field(default=None, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] | None = None
     pokedata_url: str | None = None
+    manual_market_price: float | None = None
     min_price: float | None = None
     max_price: float | None = None
     is_active: bool | None = None
@@ -78,6 +80,7 @@ class SearchQueryResponse(BaseModel):
     check_interval_mins: int
     listing_type: Literal["buy_it_now", "auction", "both"]
     pokedata_url: str | None
+    manual_market_price: float | None
     min_price: float | None
     max_price: float | None
     is_active: bool
@@ -112,7 +115,10 @@ def list_searches(
     
     from scheduler import get_cached_market_price
     for row in rows:
-        row.market_price = get_cached_market_price(db, row.query_string)
+        if row.manual_market_price is not None:
+            row.market_price = row.manual_market_price
+        else:
+            row.market_price = get_cached_market_price(db, row.query_string)
         
     return rows
 
@@ -135,6 +141,7 @@ def create_search(
         check_interval_mins=body.check_interval_mins,
         listing_type=body.listing_type,
         pokedata_url=body.pokedata_url,
+        manual_market_price=body.manual_market_price,
         min_price=body.min_price,
         max_price=body.max_price,
         is_active=body.is_active,
@@ -147,7 +154,10 @@ def create_search(
         background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
 
     from scheduler import get_cached_market_price
-    sq.market_price = get_cached_market_price(db, sq.query_string)
+    if sq.manual_market_price is not None:
+        sq.market_price = sq.manual_market_price
+    else:
+        sq.market_price = get_cached_market_price(db, sq.query_string)
 
     return sq
 
@@ -190,7 +200,10 @@ def update_search(
     if body.pokedata_url and sq.language == "english":
         background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
     from scheduler import get_cached_market_price
-    sq.market_price = get_cached_market_price(db, sq.query_string)
+    if sq.manual_market_price is not None:
+        sq.market_price = sq.manual_market_price
+    else:
+        sq.market_price = get_cached_market_price(db, sq.query_string)
     return sq
 
 
@@ -206,7 +219,10 @@ def refresh_market_price(
         update_market_price_cache(sq.query_string, db, override_url=sq.pokedata_url, search_query_id=str(sq.id))
         db.refresh(sq)
     from scheduler import get_cached_market_price
-    sq.market_price = get_cached_market_price(db, sq.query_string)
+    if sq.manual_market_price is not None:
+        sq.market_price = sq.manual_market_price
+    else:
+        sq.market_price = get_cached_market_price(db, sq.query_string)
     return sq
 
 

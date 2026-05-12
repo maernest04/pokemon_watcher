@@ -29,6 +29,7 @@ const emptyForm = {
   check_interval_mins: 5,
   listing_type: "buy_it_now",
   pokedata_url: "",
+  manual_market_price: "",
   min_price: "",
   max_price: "",
   is_active: true,
@@ -45,6 +46,7 @@ function formFromSearch(search) {
     check_interval_mins: search.check_interval_mins || 5,
     listing_type: search.listing_type ?? "buy_it_now",
     pokedata_url: search.pokedata_url || "",
+    manual_market_price: search.manual_market_price === null ? "" : String(search.manual_market_price),
     min_price: search.min_price === null ? "" : String(search.min_price),
     max_price: search.max_price === null ? "" : String(search.max_price),
     is_active: Boolean(search.is_active),
@@ -65,6 +67,7 @@ function normalizePayload(form) {
     check_interval_mins: Number(form.check_interval_mins) || 5,
     listing_type: form.listing_type,
     pokedata_url: form.pokedata_url.trim() || null,
+    manual_market_price: form.manual_market_price === "" ? null : Number(form.manual_market_price),
     min_price: form.min_price === "" ? null : Number(form.min_price),
     max_price: form.max_price === "" ? null : Number(form.max_price),
     is_active: form.is_active,
@@ -252,6 +255,19 @@ function SearchForm({
             value={form.pokedata_url}
             onChange={onChange}
             placeholder="https://www.pokedata.io/card/..."
+          />
+        </label>
+
+        <label className="field">
+          <span>Manual price override</span>
+          <input
+            name="manual_market_price"
+            type="number"
+            step="0.01"
+            min="0"
+            value={form.manual_market_price}
+            onChange={onChange}
+            placeholder="95.50"
           />
         </label>
 

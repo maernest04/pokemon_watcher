@@ -32,6 +32,8 @@ def get_cached_market_price(db, query_string: str) -> float | None:
 
 
 def _resolve_market_price(search_query: SearchQuery, db) -> float | None:
+    if search_query.manual_market_price is not None:
+        return search_query.manual_market_price
     return get_cached_market_price(db, search_query.query_string)
 
 
