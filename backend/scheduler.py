@@ -1,6 +1,6 @@
 import asyncio
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -320,6 +320,28 @@ async def refresh_market_prices_job() -> None:
             await asyncio.sleep(60)
 
 
+async def cleanup_old_data_job() -> None:
+    db = SessionLocal()
+    try:
+        now = datetime.now(timezone.utc)
+        
+        # 1. Clean up seen listings older than 14 days
+        seen_cutoff = now - timedelta(days=14)
+        db.query(SeenListing).filter(SeenListing.first_seen_at < seen_cutoff).delete()
+        
+        # 2. Clean up alerts older than 30 days
+        alert_cutoff = now - timedelta(days=30)
+        db.query(Alert).filter(Alert.sent_at < alert_cutoff).delete()
+        
+        db.commit()
+        logger.info("Daily cleanup completed: Removed stale seen_listings and alerts.")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error during data cleanup: {e}")
+    finally:
+        db.close()
+
+
 def create_scheduler() -> AsyncIOScheduler:
     tz_name = os.environ.get("TZ", "America/Los_Angeles").strip().lstrip(":")
     try:
@@ -341,6 +363,14 @@ def create_scheduler() -> AsyncIOScheduler:
         hour=0,
         minute=0,
         id="refresh_market_prices",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        cleanup_old_data_job,
+        "cron",
+        hour=3,
+        minute=0,
+        id="cleanup_old_data",
         replace_existing=True,
     )
     return scheduler
