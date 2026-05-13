@@ -1,0 +1,81 @@
+.search-list {
+  display: grid;
+  gap: 12px;
+}
+
+.search-list.compact {
+  gap: 10px;
+}
+
+.search-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 14px;
+}
+
+.search-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.search-row-card {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.search-row-card .search-row {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.search-row-main {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.search-row-main h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.search-row-summary {
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.inline-edit-panel {
+  padding: 8px 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.inline-form-header {
+  display: flex;
+  align-items: center;
+}
+
+.inline-form-header h4 {
+  margin: 0;
+}
+
+.create-form-overlay {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  padding: 1.5rem;
+  margin-bottom: 2rem;
+}
