@@ -47,38 +47,45 @@ async def poll_active_searches_job() -> None:
     finally:
         db.close()
 
-
 async def refresh_market_prices_job() -> None:
+    # Group by (query_string, pokedata_url) to avoid redundant scrapes
+    # We store the data in a list of dicts to avoid DetachedInstanceError after db.close()
+    to_refresh = []
+    seen = set()
     db = SessionLocal()
     try:
-        # Find all active searches that need market price updates
         searches = db.scalars(
             select(SearchQuery)
             .where(SearchQuery.is_active.is_(True))
             .where(SearchQuery.language == "english")
         ).all()
         
-        # Group by (query_string, pokedata_url) to avoid redundant scrapes
-        to_refresh = []
-        seen = set()
         for s in searches:
             key = (s.query_string.strip().lower(), s.pokedata_url)
             if key not in seen:
                 seen.add(key)
-                to_refresh.append(s)
+                to_refresh.append({
+                    "id": s.id,
+                    "query_string": s.query_string,
+                    "pokedata_url": s.pokedata_url
+                })
     finally:
         db.close()
 
-    for index, search in enumerate(to_refresh):
+    for index, search_data in enumerate(to_refresh):
         db = SessionLocal()
         try:
-            update_market_price_cache(
-                search.query_string, 
+            # update_market_price_cache is a blocking sync function,
+            # so we run it in a thread to avoid blocking the event loop.
+            await asyncio.to_thread(
+                update_market_price_cache,
+                search_data["query_string"], 
                 db, 
-                override_url=search.pokedata_url
+                override_url=search_data["pokedata_url"],
+                search_query_id=search_data["id"]
             )
         except Exception as e:
-            logger.error(f"Error refreshing market price for '{search.query_string}': {e}")
+            logger.error(f"Error refreshing market price for '{search_data['query_string']}': {e}")
         finally:
             db.close()
         

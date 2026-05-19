@@ -116,7 +116,7 @@ def list_searches(
         .order_by(SearchQuery.created_at.desc())
     ).all()
     
-    from scheduler import get_cached_market_price
+    from services.alerts import get_cached_market_price
     for row in rows:
         if row.manual_market_price is not None:
             row.market_price = row.manual_market_price
@@ -157,7 +157,7 @@ def create_search(
     if sq.language == "english":
         background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
 
-    from scheduler import get_cached_market_price
+    from services.alerts import get_cached_market_price
     if sq.manual_market_price is not None:
         sq.market_price = sq.manual_market_price
     else:
@@ -203,7 +203,7 @@ def update_search(
     # If the user updated the pokedata_url, trigger an immediate refresh
     if body.pokedata_url and sq.language == "english":
         background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
-    from scheduler import get_cached_market_price
+    from services.alerts import get_cached_market_price
     if sq.manual_market_price is not None:
         sq.market_price = sq.manual_market_price
     else:
@@ -222,7 +222,7 @@ def refresh_market_price(
         from services.pokedata import update_market_price_cache
         update_market_price_cache(sq.query_string, db, override_url=sq.pokedata_url, search_query_id=str(sq.id))
         db.refresh(sq)
-    from scheduler import get_cached_market_price
+    from services.alerts import get_cached_market_price
     if sq.manual_market_price is not None:
         sq.market_price = sq.manual_market_price
     else:

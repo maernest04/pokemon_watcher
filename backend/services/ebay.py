@@ -82,29 +82,17 @@ def search_listings(
     params = {
         "q": full_query,
         "sort": "newly_listed",
-        "limit": 20,
-        "category_ids": "261032"
+        "limit": 20
     }
 
-    aspects: list[str] = []
-    grading = getattr(search_query, "grading_type", "both")
-    if grading == "graded":
-        aspects.append("Graded:{Yes}")
-    elif grading == "ungraded":
-        aspects.append("Graded:{No}")
-        params["q"] = str(params.get("q", "")) + " -psa -bgs -cgc -sgc -graded"
-
-    language = getattr(search_query, "language", "english")
-    if language == "japanese":
-        aspects.append("Language:{Japanese}")
-    elif language == "english":
-        aspects.append("Language:{English}")
-
-    if aspects:
-        params["aspect_filter"] = "categoryId:261032," + ",".join(aspects)
-    
     filters = []
     
+    grading = getattr(search_query, "grading_type", "both")
+    if grading == "graded":
+        filters.append("conditionIds:{2750}")
+    elif grading == "ungraded":
+        filters.append("conditionIds:{4000|3000}")
+
     # Only USA listings
     filters.append("itemLocationCountry:US")
     
@@ -141,9 +129,19 @@ def search_listings(
     data = response.json()
     items = data.get("itemSummaries", [])
     
+    language = getattr(search_query, "language", "english")
+    
     listings = []
     for item in items:
         title = item.get("title", "").lower()
+        
+        if language == "japanese":
+            if "japanese" not in title and "jpn" not in title:
+                continue
+        elif language == "english":
+            if "japanese" in title or "jpn" in title:
+                continue
+                
         if grading == "ungraded":
             # Match whole words to prevent matching Pokemon names like "Capsakid"
             if re.search(r'\b(psa|bgs|cgc|sgc|graded)\b', title):

@@ -181,9 +181,12 @@ For each active search_query across all users:
 ```
 
 **eBay API notes:**
-- Use `ebaysdk` Python package
+- Use `ebaysdk` Python package (Note: currently implemented using REST Browse API)
 - Store `EBAY_APP_ID` in `.env`
-- For graded filter: use `itemFilter` `Condition` with value `"3000"` (Graded)
+- **Search Strategy Update (No String Appending & Flexible Categories):** To avoid missing listings in alternative categories (like 183454 vs 261032) while strictly *not* appending modifiers (like `-japanese` or `-psa`) to the user's query string `q`:
+  - **Category**: Completely remove `category_ids` and `aspect_filter` from the request. This searches all of eBay globally.
+  - **Graded Filter**: Instead of string appending or `aspect_filter`, map `is_graded` to eBay's native `conditionIds` filter (`conditionIds:{2750}` for Graded, and `conditionIds:{4000|3000}` for Ungraded).
+  - **Language Filter**: Enforce Japanese/English strictly via Python post-filtering on the returned item's title (e.g. `if "japanese" in title...`), leaving the raw `q` untouched and avoiding multiple API calls.
 - Listing filters: map `listing_type` to eBay listing format filter (`FixedPrice` for buy-it-now, `Auction` for auction mode)
 - Wrap all API calls in try/except, log failures, do not crash the scheduler
 

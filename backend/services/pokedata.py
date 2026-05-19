@@ -63,20 +63,24 @@ def _extract_first_card_price_from_rendered_html(html: str) -> tuple[float | Non
     for elem in tcg_elements:
         # Traverse up to find a container and look for a price near this element
         curr = elem.parent
-        for _ in range(8): # Check up to 8 levels up (increased from 5 for complex layouts)
+        for _ in range(8): # Check up to 8 levels up
             if not curr: break
             
-            # Look for the specific price span class the user mentioned
-            price_spans = curr.find_all("span", class_=re.compile(r"avenir_24_700|mui-style-1i0sqsh"))
-            for price_span in price_spans:
-                if "$" in price_span.get_text():
+            # Look for typography classes that usually contain prices
+            # We match avenir_XX_YY with or without MuiTypography prefix
+            price_elements = curr.find_all(["span", "p", "div"], class_=re.compile(r"avenir_\d+_\d+|mui-style-"))
+            for pe in price_elements:
+                text = pe.get_text().strip()
+                if "$" in text:
                     try:
-                        val = price_span.get_text().strip().replace("$", "").replace(",", "")
-                        return float(val), card_url
+                        # Extract the first dollar amount found in this element
+                        match = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)", text)
+                        if match:
+                            return float(match.group(1).replace(",", "")), card_url
                     except ValueError:
                         pass
             
-            # Fallback within this container: any dollar amount
+            # Fallback within this container: any dollar amount in any text
             price_match = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)", curr.get_text())
             if price_match:
                 return float(price_match.group(1).replace(",", "")), card_url
@@ -84,16 +88,17 @@ def _extract_first_card_price_from_rendered_html(html: str) -> tuple[float | Non
             curr = curr.parent
 
     # STRATEGY 2: Direct price span check (main price on page)
-    # If we are on a card page, the main price often has this specific class
-    card_page_price_span = body.find("span", class_=re.compile(r"avenir_24_700"))
-    if card_page_price_span and "$" in card_page_price_span.get_text():
-        # Check if "eBay" is the label immediately preceding or near this span
-        # If so, we might want to keep looking, but usually this is the main Market Price
-        try:
-            val = card_page_price_span.get_text().strip().replace("$", "").replace(",", "")
-            return float(val), card_url
-        except ValueError:
-            pass
+    # If we are on a card page, look for any prominent price element
+    main_price_elements = body.find_all(["span", "p", "div"], class_=re.compile(r"avenir_(?:20|24|32)_\d+"))
+    for pe in main_price_elements:
+        text = pe.get_text().strip()
+        if "$" in text:
+            try:
+                match = re.search(r"\$\s*(\d+(?:,\d{3})*(?:\.\d{2})?)", text)
+                if match:
+                    return float(match.group(1).replace(",", "")), card_url
+            except ValueError:
+                pass
 
     # STRATEGY 3: Fallback to general Market Price search, but avoid "eBay" if possible
     all_text = scope.get_text(" ", strip=True)
