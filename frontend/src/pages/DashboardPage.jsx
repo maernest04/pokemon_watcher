@@ -121,6 +121,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   const [error, setError] = useState("")
   const [showEbaySecret, setShowEbaySecret] = useState(false)
   const [settingsMessage, setSettingsMessage] = useState("")
+  const [pausedSearchIds, setPausedSearchIds] = useState([])
 
   const [settingsError, setSettingsError] = useState("")
 
@@ -536,6 +537,55 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     }
   }
 
+  async function handleToggleSearchActive(search) {
+    setSaving(true)
+    setError("")
+    setMessage("")
+    try {
+      const updated = await updateSearch(search.id, { is_active: !search.is_active })
+      setSearches((current) =>
+        current.map((currentSearch) => (currentSearch.id === search.id ? updated : currentSearch)),
+      )
+      setPausedSearchIds((current) => current.filter((searchId) => searchId !== search.id))
+      setMessage(updated.is_active ? "Search turned on." : "Search paused.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update search")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleToggleAllSearches() {
+    const activeSearches = searches.filter((search) => search.is_active)
+    const pausing = activeSearches.length > 0
+    const targetIds = pausing
+      ? activeSearches.map((search) => search.id)
+      : pausedSearchIds.length > 0
+        ? pausedSearchIds
+        : searches.map((search) => search.id)
+    if (targetIds.length === 0) {
+      return
+    }
+    setSaving(true)
+    setError("")
+    setMessage("")
+    try {
+      const updatedSearches = await Promise.all(
+        targetIds.map((searchId) => updateSearch(searchId, { is_active: pausing ? false : true })),
+      )
+      const updatedById = new Map(updatedSearches.map((search) => [search.id, search]))
+      setSearches((current) =>
+        current.map((search) => updatedById.get(search.id) || search),
+      )
+      setPausedSearchIds(pausing ? targetIds : [])
+      setMessage(pausing ? "All active searches paused." : "Searches turned back on.")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update searches")
+    } finally {
+      setSaving(false)
+    }
+  }
+
 
   return (
     <main className="dashboard-layout">
@@ -601,6 +651,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
             paginatedSearches={paginatedSearches}
             pollingIds={pollingIds}
             handleRefreshMarket={handleRefreshMarket}
+            handleToggleSearchActive={handleToggleSearchActive}
             startEditing={startEditing}
             handleDelete={handleDelete}
             editingId={editingId}
@@ -612,6 +663,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
             setCurrentPage={setCurrentPage}
             totalPages={totalPages}
             handleFormChange={handleFormChange}
+            handleToggleAllSearches={handleToggleAllSearches}
           />
 
 

@@ -180,18 +180,6 @@ export function SearchForm({
           </label>
         </div>
 
-        <div className="field">
-          <span>Search Status</span>
-          <label className="toggle-field" style={{ height: '46px' }}>
-            <input
-              name="is_active"
-              type="checkbox"
-              checked={form.is_active}
-              onChange={onChange}
-            />
-            <span>Active (polling eBay)</span>
-          </label>
-        </div>
       </div>
 
       <div className="form-actions">

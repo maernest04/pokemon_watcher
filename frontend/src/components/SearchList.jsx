@@ -17,6 +17,7 @@ export function SearchList({
   paginatedSearches,
   pollingIds,
   handleRefreshMarket,
+  handleToggleSearchActive,
   startEditing,
   handleDelete,
   editingId,
@@ -27,8 +28,10 @@ export function SearchList({
   currentPage,
   setCurrentPage,
   totalPages,
-  handleFormChange
+  handleFormChange,
+  handleToggleAllSearches
 }) {
+  const hasActiveSearches = searches.some((search) => search.is_active)
   return (
     <section className="dashboard-panel">
       <div className="panel-header">
@@ -41,6 +44,16 @@ export function SearchList({
           >
             {showCreateForm ? "Cancel" : "Create new search"}
           </button>
+          {searches.length > 0 ? (
+            <button
+              type="button"
+              className={hasActiveSearches ? "danger-button" : "primary-button"}
+              onClick={handleToggleAllSearches}
+              disabled={saving}
+            >
+              {hasActiveSearches ? "I've spent too much money" : "Turn searches back on"}
+            </button>
+          ) : null}
           <button type="button" className="secondary-button" onClick={loadSearches}>
             Refresh
           </button>
@@ -100,6 +113,16 @@ export function SearchList({
                     )}
                   </div>
                   <div className="card-actions">
+                    <label className="searching-toggle">
+                      <span>{search.is_active ? "Actively searching" : "Not searching"}</span>
+                      <input
+                        type="checkbox"
+                        checked={search.is_active}
+                        onChange={() => handleToggleSearchActive(search)}
+                        disabled={saving}
+                      />
+                      <span className="searching-toggle-slider" />
+                    </label>
                     <button
                       type="button"
                       className="secondary-button"
