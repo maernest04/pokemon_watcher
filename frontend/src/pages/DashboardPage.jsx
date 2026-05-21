@@ -33,6 +33,7 @@ const emptyForm = {
   set_name: "",
   card_number: "",
   grading_type: "both",
+  selected_grades: [],
   language: "english",
   check_interval_mins: 5,
   listing_type: "buy_it_now",
@@ -51,6 +52,7 @@ function formFromSearch(search) {
     set_name: search.set_name || "",
     card_number: search.card_number || "",
     grading_type: search.grading_type || "both",
+    selected_grades: search.grading_type === "graded" ? search.selected_grades || [] : [],
     language: search.language || "english",
     check_interval_mins: search.check_interval_mins || 5,
     listing_type: search.listing_type ?? "buy_it_now",
@@ -73,6 +75,7 @@ function normalizePayload(form) {
     set_name: setName || null,
     card_number: cardNumber || null,
     grading_type: form.grading_type,
+    selected_grades: form.grading_type === "graded" && form.selected_grades.length > 0 ? form.selected_grades : null,
     language: form.language || "english",
     check_interval_mins: Number(form.check_interval_mins) || 5,
     listing_type: form.listing_type,
@@ -274,8 +277,28 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   function handleFormChange(setter) {
     return (event) => {
       const { name, type, checked, value } = event.target
+      if (name === "selected_grades") {
+        setter((current) => {
+          if (value === "all") {
+            return {
+              ...current,
+              selected_grades: [],
+            }
+          }
+          const grade = Number(value)
+          const currentGrades = current.selected_grades || []
+          return {
+            ...current,
+            selected_grades: checked
+              ? [...currentGrades, grade].sort((a, b) => a - b)
+              : currentGrades.filter((currentGrade) => currentGrade !== grade),
+          }
+        })
+        return
+      }
       setter((current) => ({
         ...current,
+        selected_grades: name === "grading_type" && value !== "graded" ? [] : current.selected_grades,
         [name]: type === "checkbox" ? checked : value,
       }))
     }

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from sqlalchemy import ForeignKey, UniqueConstraint
+from sqlalchemy import ForeignKey, JSON, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
@@ -40,6 +40,7 @@ class SearchQuery(Base):
     set_name: Mapped[str | None] = mapped_column(nullable=True)
     card_number: Mapped[str | None] = mapped_column(nullable=True)
     grading_type: Mapped[str] = mapped_column(default="ungraded")  # ungraded, graded, both
+    selected_grades: Mapped[list[int] | None] = mapped_column(JSON, nullable=True)
     language: Mapped[str] = mapped_column(default="english")  # english, japanese
     listing_type: Mapped[str] = mapped_column(default="buy_it_now")
     pokedata_url: Mapped[str | None] = mapped_column(nullable=True)

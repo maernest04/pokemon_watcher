@@ -1,3 +1,5 @@
+const GRADE_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+
 export function SearchForm({
   form,
   onChange,
@@ -114,6 +116,36 @@ export function SearchForm({
             <option value="graded">Graded only</option>
           </select>
         </label>
+
+        {form.grading_type === "graded" ? (
+          <div className="field grade-filter-field">
+            <span>Grade</span>
+            <div className="grade-options">
+              <label className="grade-option">
+                <input
+                  name="selected_grades"
+                  type="checkbox"
+                  value="all"
+                  checked={(form.selected_grades || []).length === 0}
+                  onChange={onChange}
+                />
+                <span>All</span>
+              </label>
+              {GRADE_OPTIONS.map((grade) => (
+                <label className="grade-option" key={grade}>
+                  <input
+                    name="selected_grades"
+                    type="checkbox"
+                    value={grade}
+                    checked={(form.selected_grades || []).includes(grade)}
+                    onChange={onChange}
+                  />
+                  <span>{grade}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         <label className="field">
           <span>Language</span>

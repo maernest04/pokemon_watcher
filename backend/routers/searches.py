@@ -14,6 +14,15 @@ from models import SearchQuery, User
 router = APIRouter(prefix="/api/searches", tags=["searches"])
 
 
+def _normalize_selected_grades(grading_type: str, selected_grades: list[int] | None) -> list[int] | None:
+    if grading_type != "graded" or not selected_grades:
+        return None
+    normalized = sorted(set(selected_grades))
+    if any(grade < 1 or grade > 10 for grade in normalized):
+        raise ValueError("selected_grades must contain whole numbers from 1 to 10")
+    return normalized
+
+
 def _refresh_market_price_async(query_string: str, pokedata_url: str | None = None, search_query_id: str | None = None) -> None:
     from database import SessionLocal
     from services.pokedata import update_market_price_cache
@@ -31,6 +40,7 @@ class SearchQueryCreate(BaseModel):
     set_name: str | None = Field(default=None, max_length=256)
     card_number: str | None = Field(default=None, max_length=128)
     grading_type: Literal["ungraded", "graded", "both"] = "both"
+    selected_grades: list[int] | None = None
     language: Literal["english", "japanese"] = "english"
     check_interval_mins: int = Field(default=5, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] = "buy_it_now"
@@ -51,6 +61,11 @@ class SearchQueryCreate(BaseModel):
             raise ValueError("min_price cannot be greater than max_price")
         return self
 
+    @model_validator(mode="after")
+    def check_selected_grades(self):
+        self.selected_grades = _normalize_selected_grades(self.grading_type, self.selected_grades)
+        return self
+
 
 class SearchQueryUpdate(BaseModel):
     query_string: str | None = Field(default=None, min_length=1, max_length=512)
@@ -58,6 +73,7 @@ class SearchQueryUpdate(BaseModel):
     set_name: str | None = Field(default=None, max_length=256)
     card_number: str | None = Field(default=None, max_length=128)
     grading_type: Literal["ungraded", "graded", "both"] | None = None
+    selected_grades: list[int] | None = None
     language: Literal["english", "japanese"] | None = None
     check_interval_mins: int | None = Field(default=None, ge=1, le=1440)
     listing_type: Literal["buy_it_now", "auction", "both"] | None = None
@@ -78,6 +94,7 @@ class SearchQueryResponse(BaseModel):
     set_name: str | None
     card_number: str | None
     grading_type: str
+    selected_grades: list[int] | None
     language: Literal["english", "japanese"]
     check_interval_mins: int
     listing_type: Literal["buy_it_now", "auction", "both"]
@@ -140,6 +157,7 @@ def create_search(
         set_name=body.set_name,
         card_number=body.card_number,
         grading_type=body.grading_type,
+        selected_grades=body.selected_grades,
         language=body.language,
         check_interval_mins=body.check_interval_mins,
         listing_type=body.listing_type,
@@ -185,6 +203,16 @@ def update_search(
 ):
     sq = _get_owned_search(db, user, search_id)
     data = body.model_dump(exclude_unset=True)
+    grading_type = data.get("grading_type", sq.grading_type)
+    selected_grades = data.get("selected_grades", sq.selected_grades)
+    if "grading_type" in data or "selected_grades" in data:
+        try:
+            data["selected_grades"] = _normalize_selected_grades(grading_type, selected_grades)
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
     for key, value in data.items():
         setattr(sq, key, value)
     if (

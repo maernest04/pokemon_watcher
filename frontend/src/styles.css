@@ -383,6 +383,30 @@ select:focus {
   width: auto;
 }
 
+.grade-filter-field {
+  grid-column: 1 / -1;
+}
+
+.grade-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.grade-option {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(7, 12, 22, 0.7);
+}
+
+.grade-option input {
+  width: auto;
+}
+
 @media (max-width: 900px) {
   .dashboard-grid,
   .search-grid,
@@ -649,4 +673,3 @@ select:focus {
   color: #f6f7fb;
   background: rgba(255, 255, 255, 0.08);
 }
-

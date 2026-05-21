@@ -8,6 +8,7 @@ from models import SearchQuery
 
 # Simple cache for OAuth tokens keyed by (app_id, cert_id)
 _token_cache = {}
+POKEMON_CARD_CATEGORY_ID = "183454"
 
 def _get_oauth_token(app_id: str, cert_id: str) -> str:
     if not app_id or not cert_id:
@@ -90,6 +91,10 @@ def search_listings(
     grading = getattr(search_query, "grading_type", "both")
     if grading == "graded":
         filters.append("conditionIds:{2750}")
+        selected_grades = getattr(search_query, "selected_grades", None)
+        if selected_grades:
+            grade_values = "|".join(str(grade) for grade in selected_grades)
+            params["aspect_filter"] = f"categoryId:{POKEMON_CARD_CATEGORY_ID},Grade:{{{grade_values}}}"
     elif grading == "ungraded":
         filters.append("conditionIds:{4000|3000}")
 
