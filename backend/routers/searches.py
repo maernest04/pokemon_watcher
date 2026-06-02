@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,17 +21,6 @@ def _normalize_selected_grades(grading_type: str, selected_grades: list[int] | N
     if any(grade < 1 or grade > 10 for grade in normalized):
         raise ValueError("selected_grades must contain whole numbers from 1 to 10")
     return normalized
-
-
-def _refresh_market_price_async(query_string: str, pokedata_url: str | None = None, search_query_id: str | None = None) -> None:
-    from database import SessionLocal
-    from services.pokedata import update_market_price_cache
-
-    db = SessionLocal()
-    try:
-        update_market_price_cache(query_string, db, override_url=pokedata_url, search_query_id=search_query_id)
-    finally:
-        db.close()
 
 
 class SearchQueryCreate(BaseModel):
@@ -106,6 +95,28 @@ class SearchQueryResponse(BaseModel):
     is_active: bool
     created_at: datetime
     market_price: float | None = None
+    market_price_updated_at: datetime | None = None
+
+
+def _attach_market_price(
+    row: SearchQuery,
+    db: Session,
+    *,
+    skip_cache: bool = False,
+) -> None:
+    from services.alerts import get_price_cache_entry
+
+    if row.manual_market_price is not None:
+        row.market_price = row.manual_market_price
+        row.market_price_updated_at = None
+        return
+    if skip_cache:
+        row.market_price = None
+        row.market_price_updated_at = None
+        return
+    cache = get_price_cache_entry(db, row.query_string)
+    row.market_price = cache.market_price if cache else None
+    row.market_price_updated_at = cache.last_updated if cache else None
 
 
 def _get_owned_search(
@@ -132,21 +143,16 @@ def list_searches(
         .where(SearchQuery.user_id == user.id)
         .order_by(SearchQuery.created_at.desc())
     ).all()
-    
-    from services.alerts import get_cached_market_price
+
     for row in rows:
-        if row.manual_market_price is not None:
-            row.market_price = row.manual_market_price
-        else:
-            row.market_price = get_cached_market_price(db, row.query_string)
-        
+        _attach_market_price(row, db)
+
     return rows
 
 
 @router.post("", response_model=SearchQueryResponse, status_code=status.HTTP_201_CREATED)
 def create_search(
     body: SearchQueryCreate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -173,13 +179,9 @@ def create_search(
     db.refresh(sq)
 
     if sq.language == "english":
-        background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
-
-    from services.alerts import get_cached_market_price
-    if sq.manual_market_price is not None:
-        sq.market_price = sq.manual_market_price
+        _attach_market_price(sq, db, skip_cache=True)
     else:
-        sq.market_price = get_cached_market_price(db, sq.query_string)
+        _attach_market_price(sq, db)
 
     return sq
 
@@ -197,7 +199,6 @@ def get_search(
 def update_search(
     search_id: UUID,
     body: SearchQueryUpdate,
-    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -228,14 +229,10 @@ def update_search(
     db.commit()
     db.refresh(sq)
 
-    # If the user updated the pokedata_url, trigger an immediate refresh
     if body.pokedata_url and sq.language == "english":
-        background_tasks.add_task(_refresh_market_price_async, sq.query_string, sq.pokedata_url, str(sq.id))
-    from services.alerts import get_cached_market_price
-    if sq.manual_market_price is not None:
-        sq.market_price = sq.manual_market_price
+        _attach_market_price(sq, db, skip_cache=True)
     else:
-        sq.market_price = get_cached_market_price(db, sq.query_string)
+        _attach_market_price(sq, db)
     return sq
 
 
@@ -247,14 +244,25 @@ def refresh_market_price(
 ):
     sq = _get_owned_search(db, user, search_id)
     if sq.language == "english":
+        from services.alerts import get_price_cache_entry
         from services.pokedata import update_market_price_cache
-        update_market_price_cache(sq.query_string, db, override_url=sq.pokedata_url, search_query_id=str(sq.id))
+
+        fresh_price = update_market_price_cache(
+            sq.query_string,
+            db,
+            override_url=sq.pokedata_url,
+            search_query_id=str(sq.id),
+        )
         db.refresh(sq)
-    from services.alerts import get_cached_market_price
-    if sq.manual_market_price is not None:
-        sq.market_price = sq.manual_market_price
+        if sq.manual_market_price is not None:
+            sq.market_price = sq.manual_market_price
+            sq.market_price_updated_at = None
+        else:
+            sq.market_price = fresh_price
+            cache = get_price_cache_entry(db, sq.query_string)
+            sq.market_price_updated_at = cache.last_updated if cache else None
     else:
-        sq.market_price = get_cached_market_price(db, sq.query_string)
+        _attach_market_price(sq, db)
     return sq
 
 

@@ -54,7 +54,7 @@ export function SearchList({
               {hasActiveSearches ? "I've spent too much money" : "Turn searches back on"}
             </button>
           ) : null}
-          <button type="button" className="secondary-button" onClick={loadSearches}>
+          <button type="button" className="secondary-button" onClick={() => loadSearches({ refreshPrices: true })}>
             Refresh
           </button>
         </div>

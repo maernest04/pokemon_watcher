@@ -156,10 +156,17 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     }
   }, [currentPage, totalPages])
 
-  async function loadSearches() {
+  async function loadSearches({ refreshPrices = false } = {}) {
     setLoading(true)
     setError("")
     try {
+      if (refreshPrices) {
+        const current = await listSearches()
+        const englishSearches = current.filter((search) => search.language === "english")
+        for (const search of englishSearches) {
+          await refreshMarketPrice(search.id)
+        }
+      }
       const data = await listSearches()
       setSearches(data)
       setCurrentPage(1)
@@ -305,26 +312,15 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
     }
   }
 
-  async function pollForMarketPrice(searchId) {
+  async function fetchMarketPriceOnce(searchId) {
     setPollingIds((prev) => new Set([...prev, searchId]))
     try {
-      for (let i = 0; i < 15; i++) {
-        await new Promise((r) => setTimeout(r, 2000))
-        try {
-          const list = await listSearches()
-          const updated = list.find((s) => s.id === searchId)
-          if (updated) {
-            const hasPrice = updated.market_price !== null && updated.market_price !== undefined;
-            const urlRemoved = !updated.pokedata_url;
-            if (hasPrice) {
-              setSearches(list)
-              return
-            }
-          }
-        } catch {
-          // ignore error and continue polling
-        }
-      }
+      const updated = await refreshMarketPrice(searchId)
+      setSearches((current) =>
+        current.map((search) => (search.id === searchId ? updated : search)),
+      )
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to fetch market price")
     } finally {
       setPollingIds((prev) => {
         const next = new Set(prev)
@@ -347,7 +343,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
       setCreateForm(emptyForm)
       const needsPrice =
         created.language === "english" &&
-        ((created.market_price === null || created.market_price === undefined) || created.pokedata_url)
+        (created.manual_market_price === null || created.manual_market_price === undefined)
       setMessage(
         needsPrice
           ? "Search created. Fetching market price..."
@@ -356,7 +352,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
             : "Search created."
       )
       if (needsPrice) {
-        pollForMarketPrice(created.id)
+        fetchMarketPriceOnce(created.id)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not create search")
@@ -396,7 +392,7 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
       const needsPrice = payload.pokedata_url && updated.language === "english"
       setMessage(needsPrice ? "Search updated. Fetching new market price..." : "Search updated.")
       if (needsPrice) {
-        pollForMarketPrice(updated.id)
+        fetchMarketPriceOnce(updated.id)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not update search")
@@ -521,18 +517,9 @@ export default function DashboardPage({ user, onUserChange, onLogout }) {
   async function handleRefreshMarket(searchId) {
     setSaving(true)
     setError("")
-    setPollingIds((prev) => new Set([...prev, searchId]))
     try {
-      await refreshMarketPrice(searchId)
-      await loadSearches()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to refresh market price")
+      await fetchMarketPriceOnce(searchId)
     } finally {
-      setPollingIds((prev) => {
-        const next = new Set(prev)
-        next.delete(searchId)
-        return next
-      })
       setSaving(false)
     }
   }

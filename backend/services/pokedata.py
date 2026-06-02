@@ -1,6 +1,5 @@
-from pathlib import Path
 import re
-from datetime import datetime
+import time
 from typing import Any
 from urllib.parse import quote_plus, urljoin
 
@@ -21,6 +20,9 @@ def _playwright_fetch_html(url: str) -> tuple[str | None, str | None]:
                 lambda route: route.abort(),
             )
             # Use networkidle to ensure all async price data is loaded
+            page.set_extra_http_headers(
+                {"Cache-Control": "no-cache", "Pragma": "no-cache"}
+            )
             page.goto(url, wait_until="networkidle", timeout=45000)
             try:
                 # Wait for at least one card or price element to appear
@@ -126,15 +128,20 @@ def _extract_first_card_price_from_rendered_html(html: str) -> tuple[float | Non
     return None, card_url
 
 
+def _cache_bust_url(url: str) -> str:
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}_t={int(time.time() * 1000)}"
+
+
 def scrape_market_price(card_query: str, *, override_url: str | None = None) -> dict[str, Any]:
     cq = card_query.strip()
-    
+
     if override_url:
-        search_url = override_url
+        search_url = _cache_bust_url(override_url)
     else:
         if not cq:
             return {"market_price": None, "product_url": None, "error": "Empty query"}
-        search_url = f"https://www.pokedata.io/cards?q={quote_plus(cq)}"
+        search_url = _cache_bust_url(f"https://www.pokedata.io/cards?q={quote_plus(cq)}")
 
     debug: dict[str, Any] = {"pokedata_url": search_url}
 

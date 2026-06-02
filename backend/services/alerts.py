@@ -17,11 +17,15 @@ def _normalize_query(query: str) -> str:
     return " ".join(query.strip().lower().split())
 
 
-def get_cached_market_price(db, query_string: str) -> float | None:
+def get_price_cache_entry(db, query_string: str) -> PriceCache | None:
     normalized_query = _normalize_query(query_string)
-    cache = db.scalar(
+    return db.scalar(
         select(PriceCache).where(PriceCache.card_query == normalized_query)
     )
+
+
+def get_cached_market_price(db, query_string: str) -> float | None:
+    cache = get_price_cache_entry(db, query_string)
     return cache.market_price if cache else None
 
 
